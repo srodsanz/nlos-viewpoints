@@ -1,4 +1,4 @@
-import torch
+import numpy as np 
 
 from enum import Enum
 
@@ -22,26 +22,19 @@ class Renderer:
         self.sampler = sampler
     
     
-    
     @staticmethod
-    def render_transient(colatitude_bins, azimuthal_bins, 
-                         delta_colatitude_bins, 
-                         delta_azimuthal_bins):
+    def generate_relay_wall(sensor_x, sensor_y, 
+                            scale):
         """
-        Render transient measurements by inferred parameters to perform differentiable optimization
-        :param colatitude_bins:
-        :param azimuthal_bins:
-        :param delta_colatitude_bins:
-        :param delta_azimuthal_bins:
+        Generate grid-like relay-wall on NLOS scene
+        :param sensor_x: width
+        :param sensor_y: height
+        :param scale: scale of input grid
         """
-    
-
-    @staticmethod
-    def volume_rendering(voxel_grid, volume_density):
-        """
-        Volume rendering method 
-        """
-    
-
-
-    
+        assert sensor_x > 0 and sensor_y > 0, f"Resolution on grid components should be positive"
+        nx = 2*sensor_x + 1
+        ny = 2*sensor_y + 1
+        x = np.stack((np.linspace(start=-scale, stop=scale, num=nx),)*ny, axis=1)
+        y = np.stack((np.linspace(start=-scale, stop=scale, num=ny),)*nx, axis=0)
+        z = np.zeros((nx, ny))
+        return np.stack((x, y, z), axis=-1, dtype=np.float32)

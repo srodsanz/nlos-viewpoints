@@ -2,32 +2,55 @@ import numpy as np
 
 from typing import Optional
 
-from sympy import numbered_symbols
 
 class Volume:
     """
-    Volume methods to voxelize input grid
+    Volume methods for discretization / voxel input grid
     """
     
     @staticmethod
-    def voxelize(center, n_bins):
+    def sample_2d_hemisphere(
+        center: np.ndarray, radius: np.ndarray, n_bins: int
+    ):
         """
-        Voxelization of given input region
-        :param n_bins: output resolution of the voxel representation
+        Sample points uniformly on a given hemisphere 
+        :param center:
+        :param radius:
+        :param n_bins:
         """
-        assert isinstance(center, np.ndarray), f"Center element {center} should be a numpy array"
+        center = center.reshape(-1, 2)
+        colat_bins = np.linspace(start=0, stop=np.pi / 2, num=n_bins)
+        azim_bins = np.linspace(start=-np.pi, stop=np.pi, num=n_bins)
+        radius_bins = np.repeat(radius, repeats=[n_bins])
+        R, C, A = np.meshgrid(radius_bins, colat_bins, azim_bins)
+        stacked_coords = np.vstack((R, C, A)).reshape(3, -1).T
+        center_reps = np.repeat(center, repeats=[stacked_coords.shape[0]])
+        return np.concatenate((center_reps, stacked_coords), axis=1)
 
-        dx = 1 / np.sqrt(2)
-        dy = 1 / np.sqrt(2)
-        dz = 1 / np.sqrt(2)
-        x_bins = np.linspace(start=center[0]-center[0]*dx/2, stop=center[0]+center[0]*dx/2, num=n_bins)
-        y_bins = np.linspace(start=center[1]-center[1]*dy/2, stop=center[1]+center[1]*dy/2, num=n_bins)
-        z_bins = np.linspace(start=center[2]-center[2]*dz/2, stop=center[2]+center[2]*dz/2, num=n_bins)
-    
-        return np.stack((x_bins, y_bins, z_bins), axis=0)
+
     
     @staticmethod
-    def spherical2cartesian(center, radius, azimuthal, colatitude):
+    def generate_volume_xyz(center: np.ndarray, scale,
+                            n_sensor_x, n_sensor_y, n_sensor_z):
+        """
+        Voxelization of given input region by center
+        Returns:
+            np.ndarray: numpy array of volume points 
+        """
+        nx = 2*n_sensor_x + 1
+        ny = 2*n_sensor_y + 1
+        nz = 2*n_sensor_z + 1
+        x = np.stack(
+            (np.linspace(start=center[0]-center[0]*scale, stop=center[0]+center[0]*scale, num=nx),)*ny, axis=1
+        )
+        y = np.stack(
+            (np.linspace(start=center[1]-center[1]*scale, stop=center[1]+center[1]*scale, num=ny),)*nx, axis=0
+        )
+        
+    
+    
+    @staticmethod
+    def spherical2cartesian(center, radius, colatitude, azimuthal):
         """
         Conversion from spherical coordinates to cartesian
         :param center: affine center in xyz coordinates 
@@ -41,7 +64,8 @@ class Volume:
         x = radius * np.sin(colatitude) * np.cos(azimuthal) + center[0]
         y = radius * np.sin(colatitude) * np.sin(azimuthal) + center[1]
         z = radius * np.cos(colatitude) + center[2]
-        return np.array([x, y, z], dtype=np.float32)
+        return np.concatenate((center, np.array([x, y, z])), axis=1)
+    
     
     @staticmethod
     def cartesian2spherical(center, x, y, z):
@@ -70,25 +94,7 @@ class Volume:
         else:
             azimuthal = 0
         
-        return np.array([radius, colatitude, azimuthal], dtype=np.float32)
+        return np.concatenate((center, np.array([radius, colatitude, azimuthal])), axis=1)
     
     
-    @staticmethod
-    def sample_2d_hemisphere(
-        center: np.ndarray, radius: np.ndarray, n_bins: int
-    ):
-        """
-        Sample points uniformly on a given hemisphere 
-        :param center:
-        :param radius:
-        :param n_bins:
-        """
-        center = center.reshape(-1, 2)
-        colat_bins = np.linspace(start=0, stop=np.pi / 2, num=n_bins)
-        azim_bins = np.linspace(start=-np.pi, stop=np.pi, num=n_bins)
-        radius_bins = np.repeat(radius, repeats=[n_bins])
-        R, C, A = np.meshgrid(radius_bins, colat_bins, azim_bins)
-        stacked_coords = np.vstack((R, C, A)).reshape(3, -1).T
-        center_reps = np.repeat(center, repeats=[stacked_coords.shape[0]])
-        return np.concatenate((stacked_coords, center_reps), axis=1)
-
+    

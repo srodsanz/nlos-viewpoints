@@ -1,7 +1,7 @@
 import torch
 
-from torch.nn import KLDivLoss
 from enum import Enum
+from typing import Optional
 
 class NeTFLoss(Enum):
     """
@@ -9,17 +9,22 @@ class NeTFLoss(Enum):
     """
     LOSS_MSE = 0
 
-    @staticmethod
-    def from_id(id,
+    @classmethod
+    def from_id(cls, id,
                 transient_pred: torch.Tensor,
                 transient_gt: torch.Tensor
-        ):
+        ) -> Optional[torch.Tensor]:
         """
         Get loss value from different IDs defined for the used implementation
-        :param transient_pred:
-        :param transient_gt:
+        :param transient_pred: transient measurements predicted by renderer
+        :param transient_gt: ground truth transient measurement
         """
-        raise NotImplementedError("NYI - Function not yet implemented")
+        loss = None
+        if id == cls.LOSS_MSE:
+            loss =  cls.mean_squared_error(transient_pred=transient_pred, transient_gt=transient_gt)
+        
+        return loss
+        
 
     @staticmethod
     def mean_squared_error(
