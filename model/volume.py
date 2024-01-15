@@ -66,19 +66,16 @@ class Volume:
         return coords_xyz
     
     @staticmethod
-    def sample_2d_hemisphere(center: np.ndarray, radius,
-                             n_bins):
+    def sample_2d_hemisphere(radius, n_bins):
         """
         Sample 2D hemispheres on given radius
         :param center:
         :param radius:
         :param n_bins:
         """
-        center = np.expand_dims(center, axis=0)
         az_bins = np.linspace(start=0, stop=np.pi, num=n_bins)
         col_bins = np.linspace(start=0, stop=np.pi / 2, num=n_bins)
         r_bins = np.repeat(radius, repeats=n_bins)
-        center_bins = np.repeat(center, repeats=n_bins, axis=0)
         R, A, C = np.meshgrid(r_bins, az_bins, col_bins)
         coords_rac = np.stack((R, A, C), axis=-1)
         return coords_rac

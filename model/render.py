@@ -38,3 +38,17 @@ class Renderer:
         y = np.stack((np.linspace(start=-scale, stop=scale, num=ny),)*nx, axis=0)
         z = np.zeros((nx, ny))
         return np.stack((x, y, z), axis=-1, dtype=np.float32)
+    
+    @staticmethod
+    def render_transent(n_t_bins, delta_t_bins,
+                        delta_col, delta_az, volume_density,
+                        albedo_density):
+        """
+        Transient rendering function by forward model
+        :param n_t_bins:
+        :param delta_t_bins:
+        :param delta_col:
+        :param delta_az:
+        :param volume_density:
+        :param albedo_density:
+        """
