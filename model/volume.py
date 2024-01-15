@@ -1,7 +1,39 @@
 import numpy as np
 
 from typing import Optional
+from enum import Enum
 
+class LF_Format(Enum):
+    """
+    Format of light field 6d coordinates according to different supported schemes
+
+    Args:
+        Enum (_type_): 
+        C stands for center coordinate 
+        LF is key index
+        P stands for point in cartesian coordinates
+        S stands for point in spherical coordinates, respect to C
+
+    Returns:
+        _type_: 
+    """
+    LF_Cx_Cy_Cz_P = 0
+    LF_P_Cx_Cy_Cz = 1
+    LF_Cx_Cy_Cz_S = 2
+    LF_S_Cx_Cy_Cz = 3
+
+class V_Format(Enum):
+    """
+    Format of volume coordinates in grid-like indexing
+
+    Args:
+        Enum (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    V_X_Y_Z_3 = 0
+    V_X_3 = 0
 
 class Volume:
     """
@@ -9,46 +41,48 @@ class Volume:
     """
     
     @staticmethod
-    def sample_2d_hemisphere(
-        center: np.ndarray, radius: np.ndarray, n_bins: int
-    ):
-        """
-        Sample points uniformly on a given hemisphere 
-        :param center:
-        :param radius:
-        :param n_bins:
-        """
-        center = center.reshape(-1, 2)
-        colat_bins = np.linspace(start=0, stop=np.pi / 2, num=n_bins)
-        azim_bins = np.linspace(start=-np.pi, stop=np.pi, num=n_bins)
-        radius_bins = np.repeat(radius, repeats=[n_bins])
-        R, C, A = np.meshgrid(radius_bins, colat_bins, azim_bins)
-        stacked_coords = np.vstack((R, C, A)).reshape(3, -1).T
-        center_reps = np.repeat(center, repeats=[stacked_coords.shape[0]])
-        return np.concatenate((center_reps, stacked_coords), axis=1)
-
-
-    
-    @staticmethod
     def generate_volume_xyz(center: np.ndarray, scale,
                             n_sensor_x, n_sensor_y, n_sensor_z):
         """
         Voxelization of given input region by center
+        :param center;
+        :param scale:
+        :param n_sensor_x:
+        :param n_sensor_y:
+        :param n_sensor_z:
+    
         Returns:
             np.ndarray: numpy array of volume points 
         """
+        
         nx = 2*n_sensor_x + 1
         ny = 2*n_sensor_y + 1
         nz = 2*n_sensor_z + 1
-        x = np.stack(
-            (np.linspace(start=center[0]-center[0]*scale, stop=center[0]+center[0]*scale, num=nx),)*ny, axis=1
-        )
-        y = np.stack(
-            (np.linspace(start=center[1]-center[1]*scale, stop=center[1]+center[1]*scale, num=ny),)*nx, axis=0
-        )
-        
+        x = np.linspace(start=center[0]-scale, stop=center[0]+scale, num=nx)
+        y = np.linspace(start=center[1]-scale, stop=center[1]+scale, num=ny)
+        z = np.linspace(start=center[2]-scale, stop=center[2]+scale, num=nz)
+        X, Y, Z = np.meshgrid(x, y, z)
+        coords_xyz = np.stack((X, Y, Z), axis=-1)
+        return coords_xyz
     
-    
+    @staticmethod
+    def sample_2d_hemisphere(center: np.ndarray, radius,
+                             n_bins):
+        """
+        Sample 2D hemispheres on given radius
+        :param center:
+        :param radius:
+        :param n_bins:
+        """
+        center = np.expand_dims(center, axis=0)
+        az_bins = np.linspace(start=0, stop=np.pi, num=n_bins)
+        col_bins = np.linspace(start=0, stop=np.pi / 2, num=n_bins)
+        r_bins = np.repeat(radius, repeats=n_bins)
+        center_bins = np.repeat(center, repeats=n_bins, axis=0)
+        R, A, C = np.meshgrid(r_bins, az_bins, col_bins)
+        coords_rac = np.stack((R, A, C), axis=-1)
+        return coords_rac
+ 
     @staticmethod
     def spherical2cartesian(center, radius, colatitude, azimuthal):
         """

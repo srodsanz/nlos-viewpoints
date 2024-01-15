@@ -1,4 +1,4 @@
-from loss import NeTFLoss
+from .loss import NeTFLoss
 
 SPEED_OF_LIGHT = 299792458.0
 EPOCHS_DEFAULT = 20
