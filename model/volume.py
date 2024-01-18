@@ -1,6 +1,5 @@
 import numpy as np
 
-from typing import Optional
 from enum import Enum
 
 class LF_Format(Enum):

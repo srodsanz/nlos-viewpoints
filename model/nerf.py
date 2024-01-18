@@ -79,5 +79,4 @@ class NLOSNeRF(nn.Module):
         albedo = self.albedo_output(h)
         albedo = torch.abs(albedo)
         
-        output = torch.cat((volume_density, albedo), dim=-1)
-        return output
+        return volume_density, albedo
