@@ -14,7 +14,7 @@ requirements = [str(ir.requirement) for ir in complete_reqs]
 
 setup(
     name="nlos-viewpoints",
-    version="0.1.0-SNAPSHOT",
+    version="0.1.0",
     description="Utility library for running NLOS based on NERF",
     author="srodsanz@github.com",
     install_requires=requirements,

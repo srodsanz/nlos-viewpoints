@@ -1,2 +1,4 @@
 # nlos-features
-NLOS Feature Embeddings for Confocal Samplings
+Non-Line-of-Sight Imaging via Neural Radiance Fields
+
+This repository contains an implementation of the Neural Radiance Fields architecture when addressed by NeRFs (Commonly referred as NeTFs).

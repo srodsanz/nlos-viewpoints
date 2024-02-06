@@ -22,87 +22,56 @@ class Renderer:
         Constructor
         """
         self.sampler = sampler
-    
-    
-    @staticmethod
-    def generate_relay_wall(sensor_x, sensor_y, 
-                            scale):
-        """
-        Generate grid-like relay-wall on NLOS scene
-        :param sensor_x: width
-        :param sensor_y: height
-        :param scale: scale of input grid
-        """
-        assert sensor_x > 0 and sensor_y > 0, f"Resolution on grid components should be positive"
-        nx = 2*sensor_x + 1
-        ny = 2*sensor_y + 1
-        x = np.stack((np.linspace(start=-scale, stop=scale, num=nx),)*ny, axis=1)
-        y = np.stack((np.linspace(start=-scale, stop=scale, num=ny),)*nx, axis=0)
-        z = np.zeros((nx, ny))
-        return np.stack((x, y, z), axis=-1, dtype=np.float32)
-    
+        
     @classmethod
-    def render_transient(cls, model: torch.nn.Module, 
-                         sensor_x, sensor_y, n_t_bins, delta_m_meters, scale):
+    def transient(x_pos, y_pos, time_bin, delta_m_meters):
         """
-        Render transient simulation from model output
+        Evaluate transient measurements on given input bins
 
         Args:
-            model (): _description_
-            sensor_x (): sensor width
-            sensor_y (_type_): sensor height
-            n_t_bins (_type_): number of bins
+            x_pos (_type_): _description_
+            y_pos (_type_): _description_
+            time_bin (_type_): _description_
             delta_m_meters (_type_): _description_
+
+        Raises:
+            NotImplementedError: _description_
+
+        Returns:
+            _type_: _description_
         """
-        nx = 2 * sensor_x + 1
-        ny = 2 * sensor_y + 1
-        H = np.zeros((nx, ny, n_t_bins), dtype=np.float32)
-        meters_max = n_t_bins * delta_m_meters
-        radius_bins = np.linspace(start=0, stop=meters_max, num=n_t_bins) / 2
-        az_bins = np.linspace(start=0, stop=np.pi, num=n_t_bins)
-        col_bins = np.linspace(start=0, stop=np.pi / 2, num=n_t_bins)
-        delta_az = (az_bins[-1] - az_bins[0]) /  n_t_bins
-        delta_col = (col_bins[-1] - col_bins[0]) / n_t_bins
-        relay_wall = cls.generate_relay_wall(sensor_x=sensor_x, sensor_y=sensor_y, scale=scale)
-        
-        for i, t_bin in enumerate(n_t_bins):
-            radius = radius_bins[i]
-            hemisphere_rtf = Volume.sample_2d_hemisphere(radius=radius, n_bins=n_t_bins)
-            centers_xyz = relay_wall.reshape(-1, 3)
-            spherical_rtf = hemisphere_rtf.reshape(-1, 3)
-            centers_reps = np.repeat(centers_xyz, repeats=spherical_rtf.shape[0], axis=0)
-            spherical_rtf_reps = np.repeat(spherical_rtf, repeats=centers_xyz.shape[0], axis=0)
-            zip_5dfield = np.concatenate((centers_reps, spherical_rtf_reps), axis=1)
-            volume_density, albedo = model(zip_5dfield, axis=0)
-            H[:, :, i] = ((delta_az * delta_col) / radius ** 2)  * np.sum(np.sin(spherical_rtf[:, 1]) * volume_density * albedo, axis=0)
-        
-        return H
+   
     
     @classmethod
-    def ray_marching(cls, sensor_x, sensor_y, samples_per_ray, scale,
+    def ray_marching(cls, model, raster_width, raster_height, samples_per_ray, scale,
                      furthest_volume):
         """
-        Ray marching algorithm for volume rendering on 
+        Ray marching algorithm for volume rendering on
 
         Args:
             sensor_x (int): image width
             sensor_y (int): image height
         """
-        origin = np.array([0,0, -1])
-        relay_wall = cls.generate_relay_wall(sensor_x=sensor_x, sensor_y=sensor_y, scale=scale)
-        raster = np.zeros((sensor_x, sensor_y), dtype=np.float32)
+        raster = np.zeros((raster_width, raster_height), dtype=np.float32)
+        relay_wall = cls.generate_relay_wall(sensor_x=raster_width, sensor_y=raster_height, scale=scale)
+        p, q, r = (relay_wall[0,0], relay_wall[-1, 0], relay_wall[0, -1])
+        normal_uv = np.cross(p - q, p - r)
+        normal_unit = normal_uv / np.linalg.norm(normal_uv)
         
+        rays_origin = scale * normal_unit
+        rays_dirs = relay_wall - rays_origin
+        t = np.linspace(start=0, stop=furthest_volume*scale, num=samples_per_ray)
+        coefficients_t = np.expand_dims(t, axis=1)
         
+        for i in range(raster_width):
+            for j in range(raster_height):
+                direction = rays_dirs[i, j]
+                dir_vectors = np.repeat(np.expand_dims(direction, axis=0), repeats=[samples_per_ray], axis=0)
+                points_ray = coefficients_t * dir_vectors
+                center = np.repeat(np.expand_dims(relay_wall[i, j], axis=0), repeats=samples_per_ray, axis=0)
+                coords_field = np.concatenate((center, points_ray), axis=1)
+                volume_density, albedo = model(coords_field, axis=0)
+                raster[i, j] = np.max(volume_density * albedo)
         
-    
-        
-        
-        
-        
-        
-        
-        
-        
-        
-    
+        return raster
     

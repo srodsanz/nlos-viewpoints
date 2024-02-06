@@ -6,8 +6,9 @@ class NLOSNeRF(nn.Module):
     """
     NLOS imaging addressed by NeRF functions. Standalone architecture 
     """
-    def __init__(self, n_input_position,
-                 n_input_views, n_outputs, n_hidden_layers, skip_idx, device,
+        
+    def __init__(self, n_input_position=3,
+                 n_input_views=3, n_outputs=256, n_hidden_layers=9, skip_idx=8, device="cpu",
                  length_embeddings=10):
         """
         Constructor
@@ -69,7 +70,7 @@ class NLOSNeRF(nn.Module):
         # Output cycle
         
         volume_density = self.volume_density_layer(h)
-        volume_density = torch.abs(volume_density)
+        volume_density = torch.sigmoid(volume_density)
         feature = self.final_linear(h)
         h = torch.cat((feature, positional_encoding(input_views)), dim=-1)
         for i, _ in enumerate(self.input_views):
@@ -77,6 +78,6 @@ class NLOSNeRF(nn.Module):
             h = torch.nn.functional.relu(h)
         
         albedo = self.albedo_output(h)
-        albedo = torch.abs(albedo)
+        albedo = torch.sigmoid(albedo)
         
         return volume_density, albedo
