@@ -1,77 +1,188 @@
 import numpy as np 
 import torch
 
-from enum import Enum
-from .volume import Volume
-
-
-class Sampler(Enum):
-    """
-    Sampling strategies
-    """
-    SAMPLER_UNIFORM = 0
-    SAMPLER_TWO_STAGE = 0
-
+from .format import LightFFormat
+from .scene import Scene
 
 class Renderer:
     """
     Rendering class on volume rendering techniques
     """
-    def __init__(self, sampler: Sampler):
+    
+    def __init__(self, focal, device):
         """
         Constructor
         """
-        self.sampler = sampler
+        assert (device.startswith("cuda") and torch.cuda.is_available()) or (device == "cpu"), \
+            f"The specified device: {device} is not available or unknown"
         
-    @classmethod
-    def transient(x_pos, y_pos, time_bin, delta_m_meters):
+        #TODO: Techniques for hierarchical sampling on PDF for geometry, maybe with weights over bounded volume
+        self.focal = focal
+        self.device = device
+        
+    def render_transient(self, nerf_fn, 
+                        lf_sampled_center,
+                        lf_format: LightFFormat = LightFFormat.LF_X0_Y0_R_A_C_6
+        ):
+        
         """
-        Evaluate transient measurements on given input bins
+        Render transient with quadrature rule
+        Sampled center-wise
 
         Args:
-            x_pos (_type_): _description_
-            y_pos (_type_): _description_
-            time_bin (_type_): _description_
-            delta_m_meters (_type_): _description_
-
-        Raises:
-            NotImplementedError: _description_
-
-        Returns:
-            _type_: _description_
+            lf_batch (torch.Tensor): _description_
+            lf_format (LightFFormat, optional): _description_. Defaults to LightFFormat.LF_X0_Y0_R_A_C_6.
         """
-   
+        assert lf_sampled_center.shape[-1] == 6 and lf_sampled_center.dim() == 4, f"Passed sampling on light field has incorrect shapes"
+        
+        n_radius_bins = lf_sampled_center.shape[0]
+        pred_H = torch.zeros((n_radius_bins)).to(device=self.device)
+        radius_bins = lf_sampled_center[:, 0, 0, 0]
+        
+        if lf_format == LightFFormat.LF_X0_Y0_R_A_C_6:
+            az, col = lf_sampled_center[0, :, 0, -2], lf_sampled_center[0, 0, :, -1]
+        else:
+            col, az = lf_sampled_center[0, :, 0, -2], lf_sampled_center[0, 0, :, -1]
+        
+        delta_az = (az[-1] - az[0]) / az.shape[0]
+        delta_col = (col[-1] - col[0]) / col.shape[0]
+        
+        #TODO: To prevent OOM pass into torch model each radius ... maybe possible to vectorize and avoid loop in some other way ?
+        pred = nerf_fn(lf_sampled_center)
+        sampled_pts = lf_sampled_center.reshape(-1, 6)
+        colatitude = sampled_pts[:, -2] if lf_format == LightFFormat.LF_X0_Y0_R_C_A_6 else sampled_pts[:, -1]
+        pred_H = (delta_az * delta_col / radius_bins ** 2) * torch.sum(torch.prod(pred, dim=-1)*torch.sin(colatitude), dim=(-1, -2))        
+        
+        return pred_H
     
-    @classmethod
-    def ray_marching(cls, model, raster_width, raster_height, samples_per_ray, scale,
-                     furthest_volume):
+            
+    def get_rays(self, H, W,
+                camera2world: torch.Tensor
+        ):
         """
-        Ray marching algorithm for volume rendering on
+        Sample rays from pinhole camera model
 
         Args:
-            sensor_x (int): image width
-            sensor_y (int): image height
+            H (_type_): _description_
+            W (_type_): _description_
+            camera2world (torch.Tensor): _description_
         """
-        raster = np.zeros((raster_width, raster_height), dtype=np.float32)
-        relay_wall = cls.generate_relay_wall(sensor_x=raster_width, sensor_y=raster_height, scale=scale)
-        p, q, r = (relay_wall[0,0], relay_wall[-1, 0], relay_wall[0, -1])
-        normal_uv = np.cross(p - q, p - r)
-        normal_unit = normal_uv / np.linalg.norm(normal_uv)
+        assert H > 0 and W > 0, f"Width {W} and height {H} should be > 0"
+        h = torch.arange(H).to(device=self.device)
+        w = torch.arange(W).to(device=self.device)
+        focal = self.focal
+        ww, hh = torch.meshgrid(h, w, indexing="xy")
+        dirs = torch.stack(((ww - 0.5*W) / focal, -(hh - 0.5*H) / focal, -torch.ones_like(hh)), axis=-1)
+        rays_o = torch.broadcast_to(camera2world[:3, -1], dirs.shape)
+        rays_d = torch.sum(dirs[..., None, :] * camera2world[:3, :3], axis=-1)
         
-        rays_origin = scale * normal_unit
-        rays_dirs = relay_wall - rays_origin
-        t = np.linspace(start=0, stop=furthest_volume*scale, num=samples_per_ray)
-        coefficients_t = np.expand_dims(t, axis=1)
-        
-        for i in range(raster_width):
-            for j in range(raster_height):
-                direction = rays_dirs[i, j]
-                dir_vectors = np.repeat(np.expand_dims(direction, axis=0), repeats=[samples_per_ray], axis=0)
-                points_ray = coefficients_t * dir_vectors
-                center = np.repeat(np.expand_dims(relay_wall[i, j], axis=0), repeats=samples_per_ray, axis=0)
-                coords_field = np.concatenate((center, points_ray), axis=1)
-                volume_density, albedo = model(coords_field, axis=0)
-                raster[i, j] = np.max(volume_density * albedo)
-        
-        return raster
+        return rays_o, rays_d
     
+    def ndc_rays(self, H, W, focal, near,
+                    rays_o, rays_d):
+        """
+        Convert to NDC coordinate system
+
+        Args:
+            H (_type_): _description_
+            W (_type_): _description_
+            focal (_type_): _description_
+            near (_type_): _description_
+            rays_o (_type_): _description_
+            rays_d (_type_): _description_
+        """
+        
+        # Shift ray origins to near plane
+        t = -(near + rays_o[..., 2]) / rays_d[..., 2]
+        rays_o = rays_o + t[..., None] * rays_d
+
+        # Projection
+        o0 = -1./(W/(2.*focal)) * rays_o[..., 0] / rays_o[..., 2]
+        o1 = -1./(H/(2.*focal)) * rays_o[..., 1] / rays_o[..., 2]
+        o2 = 1. + 2. * near / rays_o[..., 2]
+
+        d0 = -1./(W/(2.*focal)) * \
+            (rays_d[..., 0]/rays_d[..., 2] - rays_o[..., 0]/rays_o[..., 2])
+        d1 = -1./(H/(2.*focal)) * \
+            (rays_d[..., 1]/rays_d[..., 2] - rays_o[..., 1]/rays_o[..., 2])
+        d2 = -2. * near / rays_o[..., 2]
+
+        rays_o = torch.stack([o0, o1, o2], -1)
+        rays_d = torch.stack([d0, d1, d2], -1)
+
+        return rays_o, rays_d
+        
+    def render_rays(self, 
+                    nerf_fn, H, W, rays_o, rays_d, 
+                    near, far, 
+                    samples_per_ray,
+                    batch_size=32
+        ):
+        """_summary_
+
+        Args:
+            rays_o (_type_): _description_
+            rays_d (_type_): _description_
+            near (_type_): _description_
+            far (_type_): _description_
+            samples_per_ray (_type_): _description_
+        """
+        z = torch.linspace(start=near, end=far, steps=samples_per_ray).expand((H, W, samples_per_ray)) \
+            .to(device=self.device)
+        
+        pts = rays_o.unsqueeze(-2) + rays_d.unsqueeze(-2) * z.unsqueeze(-1)
+        viewing_dirs = rays_d / torch.linalg.norm(rays_d, dim=-1)
+        pts = pts.reshape(-1, 3)
+        viewing_dirs = viewing_dirs.reshape(-1, 3)
+        
+        assert pts.shape[-1] == viewing_dirs.shape[-1] == 3 and pts.shape[0] == viewing_dirs.shape[0], \
+            f"Incorrect shapes in implementation of rays and origins"
+        
+        field_xyz = torch.cat((pts, viewing_dirs), dim=1)
+        n_pts = pts.shape[0]
+        raw = torch.zeros((n_pts, 6))
+        batch_indexes = [i for i in range(n_pts) if i % batch_size == 0]
+        
+        for i, batch_idx in enumerate(batch_indexes):
+            
+            batch = field_xyz[batch_indexes[i-1]: batch_idx] if i >= 1 else field_xyz[:batch_idx]
+            pred = nerf_fn(batch)
+            if i == 0:
+                raw = pred
+            else:
+                raw = torch.cat((raw, pred), dim=0)
+        
+        raw = raw.view((H, W, samples_per_ray, 2))
+        volume_density, albedo = raw[..., 0], raw[..., 1]
+        dists = torch.diff(z, dim=-1)
+        transmit = torch.exp(
+            -torch.cumsum(volume_density.unsqueeze(-1) * dists.unsqueeze(-2), dim=-1)
+        )
+        volume = volume_density * transmit
+        albedo = albedo * transmit
+        intensity = volume_density * albedo * transmit
+        
+        intensity_map = torch.sum(intensity.unsqueeze(-1) * dists.unsqueeze(-2), dim=-1)
+        albedo_map = torch.sum(albedo.unsqueeze(-1) * dists.unsqueeze(-2), dim=-1)
+        volume_map = torch.sum(volume.unsqueeze(-1) * dists.unsqueeze(-2), dim=-1)
+        
+        return intensity_map, albedo_map, volume_map
+    
+    def render(self, nerf_fn, H, W, camera2world, 
+            near, far, samples_per_ray):
+        """_summary_
+
+        Args:
+            nerf_fn (_type_): _description_
+            H (_type_): _description_
+            W (_type_): _description_
+            camera2world (_type_): _description_
+            near (_type_): _description_
+            far (_type_): _description_
+            samples_per_ray (_type_): _description_
+        """
+        rays_o, rays_d = self.get_rays(H=H, W=W, camera2world=camera2world)
+        rays_o, rays_d = self.ndc_rays(H=H, W=W, focal=self.focal, near=near, rays_o=rays_o, rays_d=rays_d)
+        return self.render_rays(near_fn=nerf_fn,
+                    H=H, W=W, rays_o=rays_o, rays_d=rays_d, near=near, far=far,
+                    samples_per_ray=samples_per_ray)        

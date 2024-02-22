@@ -1,13 +1,12 @@
 import torch
 
-from enum import Enum
 from typing import Optional
+from .format import ModelLoss
 
-class NeTFLoss(Enum):
+class NeTFLoss:
     """
     Class to implement different losses used in the NeTF model
     """
-    LOSS_MSE = 0
 
     @classmethod
     def from_id(cls, id,
@@ -20,7 +19,7 @@ class NeTFLoss(Enum):
         :param transient_gt: ground truth transient measurement
         """
         loss = None
-        if id == cls.LOSS_MSE:
+        if id == ModelLoss.LOSS_MSE:
             loss =  cls.mean_squared_error(transient_pred=transient_pred, transient_gt=transient_gt)
         
         return loss
@@ -36,7 +35,8 @@ class NeTFLoss(Enum):
         :param transient_pred: transient prediction over position / time bin
         :param transient_gt: transient ground truth to compare with
         """
-        factor_sq = (transient_gt - transient_pred) ** 2
-        return torch.mean(factor_sq)
+        return torch.mean(
+            torch.square(transient_gt - transient_pred)
+        )
     
     

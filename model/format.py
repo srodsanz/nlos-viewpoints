@@ -1,6 +1,6 @@
 from enum import Enum
 
-class Spherical_Format(Enum):
+class SphericalFormat(Enum):
     """
     Format of spherical coordinates for implicit conversions
 
@@ -13,19 +13,7 @@ class Spherical_Format(Enum):
     SF_R_A_C = 0
     SF_R_C_A = 1
 
-class Cartesian_Format(Enum):
-    """
-    Format of cartesian coordinates for applied conversions
-
-    Args:
-        Enum (_type_): _description_
-
-    Returns:
-        _type_: _description_
-    """
-    X_Y_Z = 0
-
-class LF_Format(Enum):
+class LightFFormat(Enum):
     """
     Format of light field 6d coordinates according to different supported schemes
 
@@ -39,10 +27,10 @@ class LF_Format(Enum):
     Returns:
         _type_: 
     """
-    LF_X_Y_Z_COL_AZ = 0
-    LF_X_Y_Z_AZ_COL = 1
+    LF_X0_Y0_R_A_C_6 = 0
+    LF_X0_Y0_R_C_A_6 = 1
     
-class V_Format(Enum):
+class VolumeFormat(Enum):
     """
     Format of volume coordinates in grid-like indexing
 
@@ -54,3 +42,19 @@ class V_Format(Enum):
     """
     V_X_Y_Z_3 = 0
     V_X_3 = 1
+    
+class VolSampler(Enum):
+    """
+    Sampling strategies
+    """
+    SAMPLER_UNIFORM = 0
+    SAMPLER_HIERARCHICAL = 1
+    SAMPLER_MANIFOLD = 2
+    
+class ModelLoss(Enum):
+    """_summary_
+
+    Args:
+        Enum (_type_): _description_
+    """
+    LOSS_MSE = 0
