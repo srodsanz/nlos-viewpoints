@@ -67,7 +67,7 @@ class Scene:
         return hemispheres
     
     @staticmethod
-    def spherical2cartesian(light_field, 
+    def spherical2cartesian(spherical_light_field, 
                             lf_format: LightFFormat = LightFFormat.LF_X0_Y0_R_A_C_6) -> torch.Tensor:
         """
         Convert points in spherical coordinates to cartesian points
@@ -78,9 +78,9 @@ class Scene:
         Returns:
             torch.Tensor: _description_
         """
-        assert light_field.shape[-1] == 6 and light_field.dim() == 6, f"Incorrect shapes of input light field"
-        centers = light_field[..., :3]
-        hemispheres = light_field[..., 3:]
+        assert spherical_light_field.shape[-1] == 6 and spherical_light_field.dim() == 6, f"Incorrect shapes of input light field"
+        centers = spherical_light_field[..., :3]
+        hemispheres = spherical_light_field[..., 3:]
         
         if lf_format == LightFFormat.LF_X0_Y0_R_A_C_6:
             r, az, col = hemispheres[..., 0], hemispheres[..., 1], hemispheres[..., 2]
@@ -98,13 +98,14 @@ class Scene:
         pts = torch.stack((x, y, z), axis=-1) + centers
         cartesian_light_field = torch.cat((pts, hemispheres), axis=-1)
         
-        #assert cartesian_light_field.shape[-1] == light_field.shape[-1], f"Incorrect shapes for cartesian light field"
+        assert cartesian_light_field.shape[-1] == spherical_light_field.shape[-1], f"Incorrect shapes for cartesian light field after conversion change"
         
         return cartesian_light_field
     
     @staticmethod
-    def cartesian2spherical(pts, centers,
-                            output_format: SphericalFormat=SphericalFormat.SF_R_A_C):
+    def cartesian2spherical(cartesian_light_field,
+                            centers,
+                            lf_format: LightFFormat = LightFFormat.LF_X0_Y0_R_A_C_6):
         """_summary_
 
         Args:
@@ -116,36 +117,21 @@ class Scene:
         Returns:
             _type_: _description_
         """
-        assert pts.shape[-1] == 3 and centers.shape[-1] == 3, \
-            f"Incorrect shapes in cartesian coordinates of pts or centers"
+        assert centers.shape[-1] == 3 and cartesian_light_field.shape[-1] == 6 and cartesian_light_field.dim() == centers.dim(), f"Centers and light field must have same dims"
         
-        x0, y0, z0 = centers[:, 0], centers[:, 1], centers[:, 2]
-        x, y, z = pts[:, 0] - x0, pts[:, 1] - y0, pts[:, 2] - z0
-        n_pts = pts.shape[0]
+        lf_h = cartesian_light_field[..., 3:]
+        spherical_light_field = torch.cat((centers, lf_h))
+   
+        return spherical_light_field
         
-        r = torch.sqrt(x**2 + y**2 + z**2)
-        col = torch.where(r > 0, torch.acos(z / r), torch.zeros(n_pts))
-        r_xyo = torch.sqrt(x**2 + y**2)
-        mask_y = 2*(y > 0) - 1
-        az = torch.where(r_xyo > 0, mask_y * (torch.acos(x / r_xyo)), torch.zeros(n_pts))
-        
-        if output_format == SphericalFormat.SF_R_A_C:
-            stack_pts = torch.stack((r, az, col), dim=-1)
-        else:
-            stack_pts = torch.stack((r, col, az), dim=-1)
-            
-        assert stack_pts.shape[-1] == pts.shape[-1], \
-            f"Incorrect shapes after coordinate basis change"
-        
-        return stack_pts
-        
+    
     def generate_light_field(self,
             n_hemisphere_bins, n_precision_bins, delta_m_meters, 
             spherical_format:SphericalFormat=SphericalFormat.SF_R_A_C,
-            lf_format: LightFFormat = LightFFormat.LF_X0_Y0_R_A_C_6
+            lf_format: LightFFormat = LightFFormat.LF_X0_Y0_R_A_C_6,
     ):
         """
-        Generate light-field coordinates
+        Generate light-field coordinates in spherical and cartesian coordinates. Both include viewing direction
 
         Args:
             n_hemisphere_bins (_type_): _description_
@@ -163,13 +149,13 @@ class Scene:
         rw_ext = relay_wall[:, :, None, None, None, :].expand((*relay_wall.shape[:2], *hemispheres.shape[:3], relay_wall.shape[-1]))
         
         if lf_format == LightFFormat.LF_X0_Y0_R_A_C_6:
-            lf = torch.cat((rw_ext, hem_ext), dim=-1)
+            spherical_light_field = torch.cat((rw_ext, hem_ext), dim=-1)
         
         else:
             hem_ext = torch.moveaxis(hem_ext, source=-2, destination=-1)
-            lf = torch.cat((rw_ext, hem_ext), dim=-1)
+            spherical_light_field = torch.cat((rw_ext, hem_ext), dim=-1)
 
-        cartesian_light_field = self.spherical2cartesian(lf, lf_format=lf_format)
+        cartesian_light_field = self.spherical2cartesian(spherical_light_field=spherical_light_field, lf_format=lf_format)
         
-        return cartesian_light_field
+        return spherical_light_field, cartesian_light_field
         

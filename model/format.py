@@ -29,19 +29,15 @@ class LightFFormat(Enum):
     """
     LF_X0_Y0_R_A_C_6 = 0
     LF_X0_Y0_R_C_A_6 = 1
-    
-class VolumeFormat(Enum):
-    """
-    Format of volume coordinates in grid-like indexing
+
+class LightFCoordinates(Enum):
+    """_summary_
 
     Args:
         Enum (_type_): _description_
-
-    Returns:
-        _type_: _description_
     """
-    V_X_Y_Z_3 = 0
-    V_X_3 = 1
+    LFC_SPHERICAL = 0
+    LFC_CARTESIAN = 1
     
 class VolSampler(Enum):
     """
