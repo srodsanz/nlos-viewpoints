@@ -29,6 +29,12 @@ class LightFFormat(Enum):
     """
     LF_X0_Y0_R_A_C_6 = 0
     LF_X0_Y0_R_C_A_6 = 1
+    LF_X_Y_Z_A_C = 2
+    LF_X_Y_Z_C_A = 3
+    
+    Cartesian_LF = [LF_X_Y_Z_A_C, LF_X_Y_Z_C_A]
+    Spherical_LF = [LF_X0_Y0_R_A_C_6, LF_X0_Y0_R_C_A_6]
+    
 
 class LightFCoordinates(Enum):
     """_summary_
@@ -39,13 +45,12 @@ class LightFCoordinates(Enum):
     LFC_SPHERICAL = 0
     LFC_CARTESIAN = 1
     
-class VolSampler(Enum):
+class Sampling(Enum):
     """
     Sampling strategies
     """
-    SAMPLER_UNIFORM = 0
-    SAMPLER_HIERARCHICAL = 1
-    SAMPLER_MANIFOLD = 2
+    SAMPLING_UNIFORM = 0
+    SAMPLING_HIERARCHICAL = 1
     
 class ModelLoss(Enum):
     """_summary_

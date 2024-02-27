@@ -35,7 +35,7 @@ class NeTFLoss:
         :param transient_pred: transient prediction over position / time bin
         :param transient_gt: transient ground truth to compare with
         """
-        return torch.mean(
+        return torch.sum(
             torch.square(transient_gt - transient_pred)
         )
     

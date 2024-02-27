@@ -1,6 +1,6 @@
 import torch
 
-from .format import SphericalFormat, LightFFormat
+from .format import SphericalFormat, LightFFormat, Sampling
 
 class Scene:
     """
@@ -40,10 +40,65 @@ class Scene:
         z = torch.zeros((nx, ny))
         return torch.stack((x, y, z), dim=-1)
     
-    @staticmethod
-    def sample_hemispheres(delta_m_meters, n_precision_bins, 
-                        n_spherical_bins,
-                        format: SphericalFormat = SphericalFormat.SF_R_A_C) -> torch.Tensor:
+    def sample_pdf_hemispheres(self,
+                    output_map,
+                    delta_m_meters,
+                    time_start,
+                    time_end,
+                    n_spherical_fine_bins,
+                    n_spherical_coarse_bins,
+                    input_format: SphericalFormat = SphericalFormat.SF_R_A_C,
+                    sampling_format: SphericalFormat = SphericalFormat.SF_R_A_C) -> torch.Tensor:
+        """_summary_
+
+        Args:
+            delta_m_meters (_type_): _description_
+            time_start (_type_): _description_
+            time_end (_type_): _description_
+            n_spherical_fine_bins (_type_): _description_
+            sampling_format (SphericalFormat, optional): _description_. Defaults to SphericalFormat.SF_R_A_C.
+
+        Returns:
+            torch.Tensor: _description_
+        """
+        assert output_map.dim() == 4, f"Incorrect shapes for input dimensions"
+        assert n_spherical_fine_bins <= n_spherical_coarse_bins, f"Fine sampling needs to be performed over less elements"
+        
+        radius_bins = torch.arange(start=time_start, end=time_end) * delta_m_meters / 2
+        az_coarse_bins = torch.arange(start=0, end=torch.pi, steps=n_spherical_coarse_bins)
+        col_coarse_bins = torch.arange(start=0, end=torch.pi, steps=n_spherical_coarse_bins)
+        
+        if input_format == SphericalFormat.SF_R_A_C:
+            pdf_az, pdf_col = torch.sum(output_map, axis=-1), torch.sum(output_map, axis=-2)        
+        else:
+            pdf_col, pdf_az = torch.sum(output_map, axis=-1), torch.sum(output_map, axis=-2)
+        
+        pdf_az, pdf_col = pdf_az / torch.sum(pdf_az, axis=-1)[..., None].expand(*pdf_az.shape), pdf_col / torch.sum(pdf_col, axis=-1)[..., None].expand(*pdf_col.shape)
+        assert pdf_az.shape[0] == pdf_col.shape[0] and pdf_az.shape[-1] == pdf_col.shape[-1], f"Shapes on PDFs should match"
+        
+        cdf_az, cdf_col = torch.cumsum(pdf_az, axis=-1), torch.cumsum(pdf_col, axis=-1)
+        sampled_uniforms = torch.rand((radius_bins.shape[0], n_spherical_fine_bins))
+        idxs_az = torch.searchsorted(cdf_az, sampled_uniforms)
+        idxs_col = torch.searchsorted(cdf_col, sampled_uniforms)
+        az_bins = az_coarse_bins[idxs_az]
+        col_bins = col_coarse_bins[idxs_col]
+        
+        R, A, C = radius_bins[..., None, None].extend(radius_bins.shape[0], n_spherical_fine_bins, n_spherical_fine_bins), \
+            az_bins[..., None].extend(*az_bins.shape, n_spherical_fine_bins), col_bins[..., None].extend(*col_bins.shape, n_spherical_fine_bins)
+        
+        if sampling_format == SphericalFormat.SF_R_A_C:
+            hemispheres = torch.stack((R, A, C), axis=-1)
+        else:
+            hemispheres = torch.stack((R, C, A), axis=-1)
+        
+        return hemispheres
+        
+    def sample_uniform_hemispheres(self, 
+                        delta_m_meters, 
+                        time_start,
+                        time_end,
+                        n_spherical_coarse_bins,
+                        sampling_format:SphericalFormat=SphericalFormat.SF_R_A_C) -> torch.Tensor:
         """
         Sample 2D hemispheres on given radius and by spherical coordinates
 
@@ -55,20 +110,22 @@ class Scene:
         Returns:
             _type_: _description_
         """
-        radius_bins = torch.arange(start=0, end=n_precision_bins) * delta_m_meters / 2
-        a_bins = torch.linspace(start=0, end=torch.pi, steps=n_spherical_bins)
-        c_bins = torch.linspace(start=0, end=torch.pi, steps=n_spherical_bins)
+        radius_bins = torch.arange(start=time_start, end=time_end) * delta_m_meters / 2
+        a_bins = torch.linspace(start=0, end=torch.pi, steps=n_spherical_coarse_bins)
+        c_bins = torch.linspace(start=0, end=torch.pi, steps=n_spherical_coarse_bins)
         R, A, C = torch.meshgrid(radius_bins, a_bins, c_bins, indexing="ij")
-        if format == SphericalFormat.SF_R_C_A:
+    
+        if sampling_format == SphericalFormat.SF_R_C_A:
             hemispheres = torch.stack((R, C, A), dim=-1)
         else:
             hemispheres = torch.stack((R, A, C), dim=-1)
-                
+        
         return hemispheres
     
-    @staticmethod
-    def spherical2cartesian(spherical_light_field, 
-                            lf_format: LightFFormat = LightFFormat.LF_X0_Y0_R_A_C_6) -> torch.Tensor:
+    
+    def spherical2cartesian(self, 
+                            spherical_light_field, 
+                            spherical_format: SphericalFormat = SphericalFormat.SF_R_A_C) -> torch.Tensor:
         """
         Convert points in spherical coordinates to cartesian points
 
@@ -79,10 +136,11 @@ class Scene:
             torch.Tensor: _description_
         """
         assert spherical_light_field.shape[-1] == 6 and spherical_light_field.dim() == 6, f"Incorrect shapes of input light field"
+        assert spherical_format in [SphericalFormat.SF_R_A_C, SphericalFormat.SF_R_C_A], f"Incorrect input LF format"
+        
         centers = spherical_light_field[..., :3]
         hemispheres = spherical_light_field[..., 3:]
-        
-        if lf_format == LightFFormat.LF_X0_Y0_R_A_C_6:
+        if spherical_format == SphericalFormat.SF_R_A_C:
             r, az, col = hemispheres[..., 0], hemispheres[..., 1], hemispheres[..., 2]
         else:
             r, az, col = hemispheres[..., 0], hemispheres[..., 2], hemispheres[..., 1]
@@ -96,14 +154,14 @@ class Scene:
         z = r * torch.cos(col)
         
         pts = torch.stack((x, y, z), axis=-1) + centers
-        cartesian_light_field = torch.cat((pts, hemispheres), axis=-1)
         
+        cartesian_light_field = torch.cat((pts, hemispheres), axis=-1)
         assert cartesian_light_field.shape[-1] == spherical_light_field.shape[-1], f"Incorrect shapes for cartesian light field after conversion change"
         
         return cartesian_light_field
     
-    @staticmethod
-    def cartesian2spherical(cartesian_light_field,
+    def cartesian2spherical(self, 
+                            cartesian_light_field,
                             centers,
                             lf_format: LightFFormat = LightFFormat.LF_X0_Y0_R_A_C_6):
         """_summary_
@@ -121,14 +179,17 @@ class Scene:
         
         lf_h = cartesian_light_field[..., 3:]
         spherical_light_field = torch.cat((centers, lf_h))
-   
+        
         return spherical_light_field
         
     
     def generate_light_field(self,
-            n_hemisphere_bins, n_precision_bins, delta_m_meters, 
+            time_start,
+            time_end,
+            n_hemisphere_bins, 
+            delta_m_meters,
             spherical_format:SphericalFormat=SphericalFormat.SF_R_A_C,
-            lf_format: LightFFormat = LightFFormat.LF_X0_Y0_R_A_C_6,
+            output_lf_format:LightFFormat=LightFFormat.LF_X_Y_Z_A_C,
     ):
         """
         Generate light-field coordinates in spherical and cartesian coordinates. Both include viewing direction
@@ -138,9 +199,16 @@ class Scene:
             n_precision_bins (_type_): _description_
             delta_m_meters (_type_): _description_
         """
+        assert output_lf_format in [LightFFormat.LF_X_Y_Z_A_C, LightFFormat.LF_X_Y_Z_C_A], f"Incorrect light field formats for batch"
+        
         relay_wall = self.relay_wall()
-        hemispheres = self.sample_hemispheres(delta_m_meters=delta_m_meters, n_precision_bins=n_precision_bins, 
-                n_spherical_bins=n_hemisphere_bins, format=spherical_format)
+
+        hemispheres = self.sample_hemispheres(delta_m_meters=delta_m_meters, 
+                time_start=time_start,
+                time_end=time_end,
+                n_spherical_bins=n_hemisphere_bins, 
+                sampling_format=spherical_format
+        )
         
         assert relay_wall.shape[-1] == 3, f"Relay wall contains xyz coordinates"
         assert hemispheres.shape[-1] == 3, f"Hemispheres coordinates does not contain spherical samplings"
@@ -148,14 +216,14 @@ class Scene:
         hem_ext = hemispheres[None, None, ...].expand(*relay_wall.shape[:2], *hemispheres.shape)
         rw_ext = relay_wall[:, :, None, None, None, :].expand((*relay_wall.shape[:2], *hemispheres.shape[:3], relay_wall.shape[-1]))
         
-        if lf_format == LightFFormat.LF_X0_Y0_R_A_C_6:
+        if output_lf_format == LightFFormat.LF_X_Y_Z_A_C:
             spherical_light_field = torch.cat((rw_ext, hem_ext), dim=-1)
         
         else:
             hem_ext = torch.moveaxis(hem_ext, source=-2, destination=-1)
             spherical_light_field = torch.cat((rw_ext, hem_ext), dim=-1)
 
-        cartesian_light_field = self.spherical2cartesian(spherical_light_field=spherical_light_field, lf_format=lf_format)
+        cartesian_light_field = self.spherical2cartesian(spherical_light_field=spherical_light_field, 
+                                                        spherical_format=spherical_format)
         
-        return spherical_light_field, cartesian_light_field
-        
+        return cartesian_light_field
