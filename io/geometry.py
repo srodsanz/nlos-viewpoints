@@ -73,10 +73,8 @@ def transform(t, theta, plane: str,
     
     if plane == "xy":
         rot_mat = rotation_xyo(theta, device=device)
-    
     elif plane == "xz":
         rot_mat = rotation_xoz(theta, device=device)
-    
     else:
         rot_mat = rotation_oyz(theta, device=device)
     

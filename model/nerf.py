@@ -8,8 +8,9 @@ class NLOSNeRF(nn.Module):
     """
         
     def __init__(self, n_input_position=3,
-                n_input_views=3, n_outputs=256, n_hidden_layers=8, skips=[4],
-                length_embeddings=10):
+                n_input_views=2, n_outputs=256, n_hidden_layers=8, skips=[4],
+                length_embeddings=5
+    ):
         """
         Constructor
         :param n_input_components: number of input components
@@ -22,11 +23,10 @@ class NLOSNeRF(nn.Module):
         
         input_nn_pts = 2 * n_input_position * length_embeddings
         input_nn_views = 2 * n_input_views * length_embeddings
-        
+        self.length_embeddings = length_embeddings
         self.n_input_position = input_nn_pts
         self.n_input_views = input_nn_views
         self.skips = skips
-        self.length_embeddings = length_embeddings
         self.n_outputs = n_outputs
         self.n_hidden_layers = n_hidden_layers
         self.hidden_components = torch.nn.ModuleList(
@@ -43,7 +43,7 @@ class NLOSNeRF(nn.Module):
         """
         Forward model for input architecture on the 
         :param x: input for hidden layer
-        """        
+        """
         input_pts, input_views = torch.split(x, [self.n_input_position, self.n_input_views], dim=-1)
         h = input_pts
 
@@ -67,4 +67,19 @@ class NLOSNeRF(nn.Module):
         albedo = torch.abs(albedo)
         
         return torch.cat((volume_density, albedo), dim=-1)
+    
+    def fourier_encoding(self, 
+            in_: torch.Tensor,
+    ):
+        """
+        Positional encoding computation
+
+        Args:
+            in_ (_type_): _description_
+        """
+        assert in_.shape[-1] == 5, f"Incorrect dimensions for input in positional encoding"
+        length = self.length_embeddings
+        fourier_basis = 2 ** torch.arange(length)
+        terms = in_.unsqueeze(-1) * fourier_basis.unsqueeze(-2)
+        return torch.cat((torch.cos(terms), torch.sin(terms)), dim=-1).reshape((*in_.shape[:-1], -1))
     

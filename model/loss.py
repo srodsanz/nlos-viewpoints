@@ -26,7 +26,7 @@ class NeTFLoss:
         
 
     @staticmethod
-    def mean_squared_error(
+    def squared_error(
         transient_pred: torch.Tensor,
         transient_gt: torch.Tensor
     ):
@@ -38,5 +38,4 @@ class NeTFLoss:
         return torch.sum(
             torch.square(transient_gt - transient_pred)
         )
-    
     

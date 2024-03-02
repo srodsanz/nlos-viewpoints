@@ -1,7 +1,6 @@
 import numpy as np 
 import torch
 
-from .format import LightFFormat, Sampling
 from .scene import Scene
 
 class Renderer:
@@ -15,35 +14,51 @@ class Renderer:
         """        
         #TODO: Techniques for hierarchical sampling on PDF for geometry, maybe with weights over bounded volume
         self.focal = focal
-        
-    def render_transient(self, nerf_fn, radius_bins, 
-                        delta_az, 
-                        delta_col, 
-                        col_bins,
-                        sampling: Sampling,
-                        lf_format: LightFFormat = LightFFormat.LF_X_Y_Z_A_C
-        ):
-        
-        """
-        Render transient with quadrature rule
-        Sampled center-wise
+    
+    @classmethod
+    def render_quadrature_transient(cls,
+                    predicted_volume_albedo,
+                    delta_m_meters,
+                    time_start,
+                    time_end,
+                    col_bins,
+                    n_spherical_coarse_bins
+    ):
+        """_summary_
 
         Args:
-            lf_batch (torch.Tensor): _description_
-            lf_format (LightFFormat, optional): _description_. Defaults to LightFFormat.LF_X0_Y0_R_A_C_6.
+            predicted_volume_albedo (_type_): _description_
+            col_bins (_type_): _description_
+            radius_bins (_type_): _description_
+            n_spherical_coarse_bins (_type_): _description_
+            lf_form (_type_): _description_
         """
-        assert cartesian_lf_pe.shape[-1] % 6 == 0 and cartesian_lf_pe.dim() == 6, f"Sampling on LF has incorrect shapes"
         assert col_bins.dim() == 5, f"Provided colatitude bins does not have same shape as LF tensor"
-        assert not torch.is_grad_enabled(), f"Deactivate torch mode for gradient watchers"
-                
-        pred = nerf_fn(cartesian_lf_pe)
-        scaling = torch.sin(col_bins) * (delta_az * delta_col / radius_bins ** 2)
-        cum_sum = torch.sum(torch.prod(pred, dim=-1), dim=(-1, -2))
-        pred_H = scaling * cum_sum
         
-        return pred_H
+        radius_bins = torch.arange(start=time_start, end=time_end) * delta_m_meters / 2
+        delta_az = torch.pi / n_spherical_coarse_bins
+        delta_col = torch.pi / n_spherical_coarse_bins
+        scaling = delta_az * delta_col / radius_bins ** 2
+        density = torch.sum(torch.prod(predicted_volume_albedo, axis=-1) * torch.sin(col_bins), dim=(-1, -2))
+        
+        return scaling * density
     
-            
+    @classmethod
+    def render_mc_transient(cls,
+                    predicted_volume_albedo,
+                    pdf,
+                    radius_bins
+    ):
+        """_summary_
+
+        Args:
+            predicted_volume_albedo (_type_): _description_
+            pdf (_type_): _description_
+            radius_bins (_type_): _description_
+        """
+        density = torch.sum(torch.prod(predicted_volume_albedo, axis=-1) / pdf, dim=(-1, -2))
+        return density / radius_bins ** 4
+    
     def get_rays(self, H, W,
                 camera2world: torch.Tensor
         ):

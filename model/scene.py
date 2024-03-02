@@ -1,6 +1,6 @@
 import torch
 
-from .format import SphericalFormat, LightFFormat, Sampling
+from .format import SphericalFormat, LightFFormat
 
 class Scene:
     """
@@ -49,7 +49,8 @@ class Scene:
                     n_spherical_coarse_bins,
                     input_format: SphericalFormat = SphericalFormat.SF_R_A_C,
                     sampling_format: SphericalFormat = SphericalFormat.SF_R_A_C) -> torch.Tensor:
-        """_summary_
+        """
+        Importance sampling of different PDFs related to geometry estimation
 
         Args:
             delta_m_meters (_type_): _description_
@@ -162,8 +163,8 @@ class Scene:
     
     def cartesian2spherical(self, 
                             cartesian_light_field,
-                            centers,
-                            lf_format: LightFFormat = LightFFormat.LF_X0_Y0_R_A_C_6):
+                            centers
+        ):
         """_summary_
 
         Args:
@@ -186,7 +187,7 @@ class Scene:
     def generate_light_field(self,
             time_start,
             time_end,
-            n_hemisphere_bins, 
+            n_spherical_coarse_bins, 
             delta_m_meters,
             spherical_format:SphericalFormat=SphericalFormat.SF_R_A_C,
             output_lf_format:LightFFormat=LightFFormat.LF_X_Y_Z_A_C,
@@ -203,10 +204,10 @@ class Scene:
         
         relay_wall = self.relay_wall()
 
-        hemispheres = self.sample_hemispheres(delta_m_meters=delta_m_meters, 
+        hemispheres = self.sample_uniform_hemispheres(delta_m_meters=delta_m_meters, 
                 time_start=time_start,
                 time_end=time_end,
-                n_spherical_bins=n_hemisphere_bins, 
+                n_spherical_coarse_bins=n_spherical_coarse_bins, 
                 sampling_format=spherical_format
         )
         
