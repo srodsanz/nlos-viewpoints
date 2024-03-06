@@ -10,7 +10,7 @@ class Scene:
     def __init__(self, 
             sensor_x, 
             sensor_y,
-            scale
+            scale=1
         ):
         """
         Constructor
@@ -35,8 +35,8 @@ class Scene:
         nx = self.sensor_x
         ny = self.sensor_y
         scale = self.scale
-        x = torch.stack((torch.linspace(start=-scale, end=scale, steps=nx),)*ny, dim=1)
-        y = torch.stack((torch.linspace(start=-scale, end=scale, steps=ny),)*nx, dim=0)
+        x = torch.stack((torch.linspace(start=-scale, end=scale, steps=2*nx+1)[1::2],)*ny, dim=1)
+        y = torch.stack((torch.linspace(start=-scale, end=scale, steps=2*ny+1)[1::2],)*nx, dim=0)
         z = torch.zeros((nx, ny))
         return torch.stack((x, y, z), dim=-1)
     
@@ -48,7 +48,8 @@ class Scene:
                     n_spherical_fine_bins,
                     n_spherical_coarse_bins,
                     input_format: SphericalFormat = SphericalFormat.SF_R_A_C,
-                    sampling_format: SphericalFormat = SphericalFormat.SF_R_A_C) -> torch.Tensor:
+                    sampling_format: SphericalFormat = SphericalFormat.SF_R_A_C
+        ) -> torch.Tensor:
         """
         Importance sampling of different PDFs related to geometry estimation
 
@@ -94,12 +95,16 @@ class Scene:
         
         return hemispheres
         
-    def sample_uniform_hemispheres(self, 
-                        delta_m_meters, 
+    def sample_uniform_hemispheres(
+                        self, 
+                        delta_m_meters,
+                        arg_start,
+                        arg_end,
                         time_start,
                         time_end,
                         n_spherical_coarse_bins,
-                        sampling_format:SphericalFormat=SphericalFormat.SF_R_A_C) -> torch.Tensor:
+                        sampling_format:SphericalFormat=SphericalFormat.SF_R_A_C
+        ) -> torch.Tensor:
         """
         Sample 2D hemispheres on given radius and by spherical coordinates
 
@@ -112,8 +117,8 @@ class Scene:
             _type_: _description_
         """
         radius_bins = torch.arange(start=time_start, end=time_end) * delta_m_meters / 2
-        a_bins = torch.linspace(start=0, end=torch.pi, steps=n_spherical_coarse_bins)
-        c_bins = torch.linspace(start=0, end=torch.pi, steps=n_spherical_coarse_bins)
+        a_bins = torch.linspace(start=arg_start, end=arg_end, steps=n_spherical_coarse_bins)
+        c_bins = torch.linspace(start=arg_start, end=arg_end, steps=n_spherical_coarse_bins)
         R, A, C = torch.meshgrid(radius_bins, a_bins, c_bins, indexing="ij")
     
         if sampling_format == SphericalFormat.SF_R_C_A:
@@ -126,7 +131,8 @@ class Scene:
     
     def spherical2cartesian(self, 
                             spherical_light_field, 
-                            spherical_format: SphericalFormat = SphericalFormat.SF_R_A_C) -> torch.Tensor:
+                            spherical_format: SphericalFormat=SphericalFormat.SF_R_A_C
+        ) -> torch.Tensor:
         """
         Convert points in spherical coordinates to cartesian points
 
@@ -151,8 +157,8 @@ class Scene:
         assert torch.all(col >= 0) and torch.all(col <= torch.pi), f"Colatitude {col} must lie within -pi / 2, pi / 2 interval"
         
         x = r * torch.sin(col) * torch.cos(az)
-        y = r * torch.sin(col) * torch.sin(az)
-        z = r * torch.cos(col)
+        y = r * torch.cos(col)
+        z = r * torch.sin(col) * torch.sin(az)
         
         pts = torch.stack((x, y, z), axis=-1) + centers
         
@@ -185,6 +191,8 @@ class Scene:
         
     
     def generate_light_field(self,
+            arg_start,
+            arg_end,
             time_start,
             time_end,
             n_spherical_coarse_bins, 
@@ -204,9 +212,12 @@ class Scene:
         
         relay_wall = self.relay_wall()
 
-        hemispheres = self.sample_uniform_hemispheres(delta_m_meters=delta_m_meters, 
+        hemispheres = self.sample_uniform_hemispheres(
+                delta_m_meters=delta_m_meters, 
                 time_start=time_start,
                 time_end=time_end,
+                arg_start=arg_start,
+                arg_end=arg_end,
                 n_spherical_coarse_bins=n_spherical_coarse_bins, 
                 sampling_format=spherical_format
         )

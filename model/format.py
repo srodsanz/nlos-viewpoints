@@ -27,13 +27,10 @@ class LightFFormat(Enum):
     Returns:
         _type_: 
     """
-    LF_X0_Y0_R_A_C_6 = 0
-    LF_X0_Y0_R_C_A_6 = 1
-    LF_X_Y_Z_A_C = 2
-    LF_X_Y_Z_C_A = 3
+    LF_X_Y_Z_A_C = 0
+    LF_X_Y_Z_C_A = 1
     
     Cartesian_LF = [LF_X_Y_Z_A_C, LF_X_Y_Z_C_A]
-    Spherical_LF = [LF_X0_Y0_R_A_C_6, LF_X0_Y0_R_C_A_6]
     
 
 class LightFCoordinates(Enum):

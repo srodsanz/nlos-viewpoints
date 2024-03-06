@@ -2,6 +2,8 @@ import torch
 
 from torch import nn
 
+from .format import LightFFormat
+
 class NLOSNeRF(nn.Module):
     """
     NLOS imaging addressed by NeRF functions. Standalone architecture 
@@ -47,7 +49,7 @@ class NLOSNeRF(nn.Module):
         input_pts, input_views = torch.split(x, [self.n_input_position, self.n_input_views], dim=-1)
         h = input_pts
 
-        for i, layer in enumerate(self.hidden_components):
+        for i, _ in enumerate(self.hidden_components):
             h = self.hidden_components[i](h)
             h = torch.nn.functional.relu(h)
             if i in self.skips:
@@ -55,7 +57,7 @@ class NLOSNeRF(nn.Module):
         
         # Output cycle
         volume_density = self.volume_density_layer(h)
-        volume_density = torch.abs(volume_density)
+        volume_density = torch.square(volume_density)
         feature = self.final_linear(h)
         h = torch.cat((feature, input_views), dim=-1)
         
@@ -64,12 +66,13 @@ class NLOSNeRF(nn.Module):
             h = torch.nn.functional.relu(h)
         
         albedo = self.albedo_output(h)
-        albedo = torch.abs(albedo)
+        albedo = torch.square(albedo)
         
         return torch.cat((volume_density, albedo), dim=-1)
     
     def fourier_encoding(self, 
             in_: torch.Tensor,
+            lf_format: LightFFormat=LightFFormat.LF_X_Y_Z_A_C
     ):
         """
         Positional encoding computation
@@ -80,6 +83,34 @@ class NLOSNeRF(nn.Module):
         assert in_.shape[-1] == 5, f"Incorrect dimensions for input in positional encoding"
         length = self.length_embeddings
         fourier_basis = 2 ** torch.arange(length)
-        terms = in_.unsqueeze(-1) * fourier_basis.unsqueeze(-2)
-        return torch.cat((torch.cos(terms), torch.sin(terms)), dim=-1).reshape((*in_.shape[:-1], -1))
-    
+        x = in_[..., 0, None]
+        y = in_[..., 1, None]
+        z = in_[..., 2, None]
+        if lf_format == LightFFormat.LF_X_Y_Z_A_C:
+            az, col = in_[..., -2, None], in_[..., -1, None]
+        else:
+            az, col = in_[..., -1, None], in_[..., -2, None]
+        
+        x_f = x * fourier_basis
+        y_f = y * fourier_basis
+        z_f = z * fourier_basis
+        az_f = az * fourier_basis
+        col_f = col * fourier_basis
+        
+        x_sin = torch.sin(x_f)
+        x_cos = torch.cos(x_f)
+        y_sin = torch.sin(y_f)
+        y_cos = torch.cos(y_f)
+        z_sin = torch.sin(z_f)
+        z_cos = torch.cos(z_f)
+        az_sin = torch.sin(az_f)
+        az_cos = torch.cos(az_f)
+        col_sin = torch.sin(col_f)
+        col_cos = torch.cos(col_f)
+        
+        if lf_format == LightFFormat.LF_X_Y_Z_A_C:
+            outputs = torch.cat((x_sin, x_cos, y_sin, y_cos, z_sin, z_cos, az_sin, az_cos, col_sin, col_cos), dim=-1)
+        else:
+            outputs = torch.cat((x_sin, x_cos, y_sin, y_cos, z_sin, z_cos, col_sin, col_cos, az_sin, az_cos), dim=-1)
+
+        return outputs
