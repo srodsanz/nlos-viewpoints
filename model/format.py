@@ -56,3 +56,4 @@ class ModelLoss(Enum):
         Enum (_type_): _description_
     """
     LOSS_MSE = 0
+    LOSS_SE = 1

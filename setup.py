@@ -16,7 +16,10 @@ setup(
     name="nlos-viewpoints",
     version="0.1.0",
     description="Utility library for running NLOS based on NERF",
-    author="srodsanz@github.com",
+    author="Salvador Rodriguez Sanz",
+    author_email="salvador.rodriguez@unizar.es",
+    url="https://github.com/srodsanz/nlos-viewpoints",
+    python_requires=">=3.8",
     install_requires=requirements,
     packages=find_packages()
 )

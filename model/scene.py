@@ -96,7 +96,7 @@ class Scene:
         return hemispheres
         
     def sample_uniform_hemispheres(
-                        self, 
+                        self,
                         delta_m_meters,
                         arg_start,
                         arg_end,
@@ -147,6 +147,7 @@ class Scene:
         
         centers = spherical_light_field[..., :3]
         hemispheres = spherical_light_field[..., 3:]
+        
         if spherical_format == SphericalFormat.SF_R_A_C:
             r, az, col = hemispheres[..., 0], hemispheres[..., 1], hemispheres[..., 2]
         else:

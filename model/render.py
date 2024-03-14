@@ -37,14 +37,14 @@ class Renderer:
         """
         assert col_bins.dim() == 5, f"Provided colatitude bins does not have same shape as LF tensor"
         
-        radius_bins = torch.arange(start=time_start, end=time_end) * delta_m_meters / 2 
+        radius_bins = torch.arange(start=time_start, end=time_end) * delta_m_meters / 2
         
         if time_start == 0:
             radius_bins = radius_bins + 1e-4
         
         delta_az = (arg_end - arg_start) / n_spherical_coarse_bins
         delta_col = (arg_end - arg_start) / n_spherical_coarse_bins
-        scaling = delta_az * delta_col / (radius_bins ** 2)
+        scaling = delta_az * delta_col / radius_bins ** 2
         density = torch.sum(torch.prod(predicted_volume_albedo, axis=-1) * torch.sin(col_bins), dim=(-2, -1))
         
         return scaling * density
@@ -69,7 +69,7 @@ class Renderer:
                 H, 
                 W,
                 camera2world: torch.Tensor
-        ):
+    ):
         """
         Sample rays from pinhole camera model
 
@@ -94,7 +94,8 @@ class Renderer:
                 W, 
                 focal, 
                 near,
-                rays_o, rays_d):
+                rays_o, rays_d
+    ):
         """
         Convert to NDC coordinate system
 

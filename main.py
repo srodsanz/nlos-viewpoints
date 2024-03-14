@@ -14,6 +14,7 @@ from model.nerf import NLOSNeRF
 from model.loss import NeTFLoss
 from model.render import Renderer
 from model.context import NeRFContext
+from model.format import ModelLoss
 
 
 if __name__ == "__main__":
@@ -29,18 +30,30 @@ if __name__ == "__main__":
                         help="URI for GPU device")
     parser.add_argument("--path_intermediate_results", action="store", type=str, required=True,
                         help="Intermediate results path")
+    
+    #Checkpointing
     parser.add_argument("--reload_checkpoint", action="store_true",
                         help="indicate if training over checkpoint model")
     parser.add_argument("--path_checkpoint", action="store",
                         help="path of serialized model for reload")
+    parser.add_argument("--loss", action="store", default=[e.name for e in ModelLoss],
+                        help="loss function: MSE or SE")
+    
+    #Optimization tuning
     parser.add_argument("--epochs", action="store", type=int, required=True,
                         help="Number of iterations over whole transient simulation")
     parser.add_argument("--number_hemisphere_sampling", type=int, required=True,
                         help="Number of sampled hemispheres")
     parser.add_argument("--arg_start", type=float, action="store", default=0,
-                        help="Start range or argument sampling")
+                        help="Argument lower bound for range of argument sampling")
     parser.add_argument("--arg_end", type=float, action="store", default=torch.pi,
-                        help="Argument end bound for angle sampling")
+                        help="Argument upper bound for angle sampling")
+    parser.add_argument("--positional_encoding", action="store_true",
+                        help="Use positional encoding to serialize input coordinates")
+    parser.add_argument("--number_gradient_updates", type=int, action="store",
+                        help="Number of gradient accumulation steps")
+    parser.add_argument("--ignore_albedo", action="store_true",
+                        help="Ignore albedo estimation and replace by 1")
     
     args = parser.parse_args()
     path = args.path 
@@ -51,12 +64,17 @@ if __name__ == "__main__":
     n_hemisphere_bins = args.number_hemisphere_sampling
     arg_start = args.arg_start
     arg_end = args.arg_end
+    number_gradient_updates = args.number_gradient_updates
     
     device = torch.device(device_uri_gpu if torch.cuda.is_available() else "cpu")
     
     assert os.path.exists(path) and os.path.isfile(path), f"Path {path} does not exist"
     
     gt_data = tal.io.read_capture(path)
+    
+    print("Compensation of radiation for radiance computation decay")
+    
+    tal.reconstruct.compensate_laser_cos_dsqr(gt_data)
     
     NeRFContext.from_ytal(gt_data, n_iter=n_iter, n_sampled_hemispheres=n_hemisphere_bins)
     
@@ -66,11 +84,11 @@ if __name__ == "__main__":
     delta_m_meters = NeRFContext.delta_m_meters
     n_epochs_default = NeRFContext.n_iter
     gt_H = NeRFContext.H
-    gradient_batch_update = t_max
+    
     
     scene = Scene(sensor_x=sensor_width, sensor_y=sensor_height)
-    model = NLOSNeRF().to(device=device)
-    adam = optimizers.Adam(model.parameters(), lr=5e-3)
+    model = NLOSNeRF(positional_encoding=args.positional_encoding, ignore_albedo=args.ignore_albedo).to(device=device)
+    adam = optimizers.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
     
     print(f"""
         Init training scheme with the following parameters
@@ -80,7 +98,11 @@ if __name__ == "__main__":
         iterations = {n_epochs_default}
         delta meters = {delta_m_meters}
         number of hemisphere bins = {n_hemisphere_bins}
-        gradient updates = {gradient_batch_update}
+        gradient updates = {number_gradient_updates}
+        arg start = {arg_start}
+        arg end = {arg_end}
+        positional encoding = {args.positional_encoding}
+        Ignore albedo = {args.ignore_albedo}
     """)
     
     
@@ -92,53 +114,24 @@ if __name__ == "__main__":
         adam.load_state_dict(state_dict["optimizer_state_dict"])
         model.train()
     
-    print("Init sampling of LF")
-    
-    t0 = time.time()
-    
-    global_lf = scene.generate_light_field(time_start=0, time_end=t_max, arg_start=arg_start, arg_end=arg_end,
-                                        n_spherical_coarse_bins=n_hemisphere_bins,
-                                        delta_m_meters=delta_m_meters)[..., [0, 1, 2, 4, 5]]
-    
-    t1 = time.time()
-    
-    print(f"Sampling of LF achieved in : {t1 - t0} seconds")
-    
     with tqdm(range(n_epochs_default)) as pbar:
         
         adam.zero_grad()
         
         for i in range(n_epochs_default):
             
-            if (i+1) % t_max == 0:
-                
-                with torch.no_grad():
-                    global_loss = 0
-                    fig, ax = plt.subplots()
-                    center = np.array([0, 0, 0.5])
-                    dx = 1 / np.sqrt(2)
-                    dy = 1 / np.sqrt(2)
-                    dz = 1 / np.sqrt(2)
-                    xv = torch.linspace(start=center[0]-dx/2, end=center[0]+dx/2, steps=32)
-                    yv = torch.linspace(start=center[1]-dy/2, end=center[1]+dy/2, steps=32)
-                    zv = torch.linspace(start=center[2]-dz/2, end=center[2]+dz/2, steps=32)
-                    X, Y, Z = torch.meshgrid(xv, yv, zv, indexing="ij")
-                    stack_pts = torch.stack((X, Y, Z), axis=-1)
-                    view_dirs = (torch.pi/2)*torch.ones((32, 32, 32, 2))
-                    stacked_pts_dirs = model.fourier_encoding(torch.cat((stack_pts, view_dirs), dim=-1))
-                    pred = model(stacked_pts_dirs.to(device=device)).cpu()
-                    pred_vol = torch.prod(pred, axis=-1).cpu().detach().numpy()
-                    ax.imshow(np.max(pred_vol, axis=-1))
-                    fig.savefig(f"{path_intermediate_results}/result_{i}.png")
-                    plt.close()
-            
-            
-            t_idx = i % t_max 
+            t_idx = i % t_max
             sampled_gt_H = gt_H[:, :, t_idx:t_idx+1]
-            batch_lf = global_lf[:, :, t_idx:t_idx+1, :, :, :]
+            
+            if torch.any(sampled_gt_H > 0):
+                sampled_gt_H = (sampled_gt_H - torch.min(sampled_gt_H)) / (torch.max(sampled_gt_H) - torch.min(sampled_gt_H))
+            
+            batch_lf = scene.generate_light_field(time_start=t_idx, time_end=t_idx+1, arg_start=arg_start, arg_end=arg_end,
+                        n_spherical_coarse_bins=n_hemisphere_bins, delta_m_meters=delta_m_meters)[..., [0, 1, 2, 4, 5]]
+            
             col_bins = batch_lf[..., -1]
             
-            batch_lf_pe = model.fourier_encoding(batch_lf).to(device=device)
+            batch_lf_pe = model.fourier_encoding(batch_lf).to(device=device) if args.positional_encoding else batch_lf.to(device=device)
             pred_volume_albedo = model(batch_lf_pe).cpu()
             
             pred_transient = Renderer.render_quadrature_transient(
@@ -152,10 +145,32 @@ if __name__ == "__main__":
                 n_spherical_coarse_bins=n_hemisphere_bins
             )
             
-            loss = NeTFLoss.squared_error(pred_transient, sampled_gt_H) / gradient_batch_update
+            loss = NeTFLoss.squared_error(pred_transient, sampled_gt_H) / number_gradient_updates
             loss.backward()
             
-            if (i+1) % gradient_batch_update == 0:
+            
+            if (i+1) % (t_max) == 0:
+                
+                with torch.no_grad():
+                    fig, ax = plt.subplots()
+                    center = np.array([0, 0, 0.5])
+                    dx = 1 / np.sqrt(2)
+                    dy = 1 / np.sqrt(2)
+                    dz = 1 / np.sqrt(2)
+                    xv = torch.linspace(start=center[0]+(dx/2), end=center[0]-(dx/2), steps=32)
+                    yv = torch.linspace(start=center[1]+(dy/2), end=center[1]-(dy/2), steps=32)
+                    zv = torch.linspace(start=center[2]-(dz/2), end=center[2]+(dz/2), steps=32)
+                    X, Y, Z = torch.meshgrid(xv, yv, zv, indexing="ij")
+                    stack_pts = torch.stack((X, Y, Z), axis=-1)
+                    view_dirs = (torch.pi/2)*torch.ones((32, 32, 32, 2))
+                    stacked_pts_dirs = model.fourier_encoding(torch.cat((stack_pts, view_dirs), dim=-1)) if args.positional_encoding else torch.cat((stack_pts, view_dirs), dim=-1)
+                    pred = model(stacked_pts_dirs.to(device=device)).cpu()
+                    pred_vol = torch.prod(pred, axis=-1).cpu().detach().numpy()
+                    ax.imshow(np.max(pred_vol, axis=-1), cmap="hot")
+                    fig.savefig(f"{path_intermediate_results}/result_{i+1}.png")
+                    plt.close()
+            
+            if (i+1) % number_gradient_updates == 0:
                 adam.step()
                 adam.zero_grad()
             

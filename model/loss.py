@@ -21,6 +21,8 @@ class NeTFLoss:
         loss = None
         if id == ModelLoss.LOSS_MSE:
             loss =  cls.mean_squared_error(transient_pred=transient_pred, transient_gt=transient_gt)
+        else:
+            loss = cls.squared_error(transient_pred=transient_pred, transient_gt=transient_gt)
         
         return loss
         
@@ -39,3 +41,17 @@ class NeTFLoss:
             torch.square(transient_gt - transient_pred)
         )
     
+    @staticmethod
+    def mean_squared_error(
+        transient_pred: torch.Tensor,
+        transient_gt: torch.Tensor
+    ):
+        """_summary_
+
+        Args:
+            transient_pred (torch.Tensor): _description_
+            transient_gt (torch.Tensor): _description_
+        """
+        return torch.mean(
+            torch.square(transient_gt - transient_pred)
+        )

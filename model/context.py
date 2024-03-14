@@ -19,8 +19,8 @@ class NeRFContext:
     def from_ytal(cls, 
                 data: NLOSCaptureData,
                 n_iter: int,
-                n_sampled_hemispheres,
-    ):
+                n_sampled_hemispheres
+        ):
         """
         Import NeRF Context from simulated transient
 
@@ -32,10 +32,11 @@ class NeRFContext:
         cls.delta_m_meters = data.delta_t
         
         if data.H_format == HFormat.T_Sx_Sy:
-            cls.t_max, cls.sensor_width, cls.sensor_height = data.H.shape
+            cls.t_max, cls.sensor_width, cls.sensor_height = cls.H.shape
             cls.H = torch.moveaxis(cls.H, source=0, destination=-1)
         else:
             raise RuntimeError(f"Not supported format: {data.H_format}")
         
         cls.n_iter = n_iter * cls.t_max
+
         

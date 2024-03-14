@@ -9,9 +9,9 @@ class NLOSNeRF(nn.Module):
     NLOS imaging addressed by NeRF functions. Standalone architecture 
     """
         
-    def __init__(self, n_input_position=3,
+    def __init__(self, positional_encoding, n_input_position=3,
                 n_input_views=2, n_outputs=256, n_hidden_layers=8, skips=[4],
-                length_embeddings=5
+                length_embeddings=5, ignore_albedo=False
     ):
         """
         Constructor
@@ -23,12 +23,19 @@ class NLOSNeRF(nn.Module):
         
         super(NLOSNeRF, self).__init__()
         
-        input_nn_pts = 2 * n_input_position * length_embeddings
-        input_nn_views = 2 * n_input_views * length_embeddings
-        self.length_embeddings = length_embeddings
+        if positional_encoding:
+            input_nn_pts = 2 * n_input_position * length_embeddings
+            input_nn_views = 2 * n_input_views * length_embeddings
+            self.length_embeddings = length_embeddings        
+        
+        else:
+            input_nn_pts = n_input_position
+            input_nn_views = n_input_views
+        
         self.n_input_position = input_nn_pts
         self.n_input_views = input_nn_views
         self.skips = skips
+        self.ignore_albedo = ignore_albedo
         self.n_outputs = n_outputs
         self.n_hidden_layers = n_hidden_layers
         self.hidden_components = torch.nn.ModuleList(
@@ -46,6 +53,7 @@ class NLOSNeRF(nn.Module):
         Forward model for input architecture on the 
         :param x: input for hidden layer
         """
+        
         input_pts, input_views = torch.split(x, [self.n_input_position, self.n_input_views], dim=-1)
         h = input_pts
 
@@ -57,7 +65,7 @@ class NLOSNeRF(nn.Module):
         
         # Output cycle
         volume_density = self.volume_density_layer(h)
-        volume_density = torch.square(volume_density)
+        volume_density = torch.abs(volume_density)
         feature = self.final_linear(h)
         h = torch.cat((feature, input_views), dim=-1)
         
@@ -66,7 +74,7 @@ class NLOSNeRF(nn.Module):
             h = torch.nn.functional.relu(h)
         
         albedo = self.albedo_output(h)
-        albedo = torch.square(albedo)
+        albedo = torch.abs(albedo) if not self.ignore_albedo else torch.ones(volume_density.shape).to(h.device)
         
         return torch.cat((volume_density, albedo), dim=-1)
     
@@ -81,8 +89,11 @@ class NLOSNeRF(nn.Module):
             in_ (_type_): _description_
         """
         assert in_.shape[-1] == 5, f"Incorrect dimensions for input in positional encoding"
+        assert hasattr(self, "length_embeddings"), f"Current object does not contain length embedding"
+
+        
         length = self.length_embeddings
-        fourier_basis = 2 ** torch.arange(length)
+        fourier_basis = (2 ** torch.arange(length)) * torch.pi
         x = in_[..., 0, None]
         y = in_[..., 1, None]
         z = in_[..., 2, None]
@@ -97,20 +108,17 @@ class NLOSNeRF(nn.Module):
         az_f = az * fourier_basis
         col_f = col * fourier_basis
         
-        x_sin = torch.sin(x_f)
-        x_cos = torch.cos(x_f)
-        y_sin = torch.sin(y_f)
-        y_cos = torch.cos(y_f)
-        z_sin = torch.sin(z_f)
-        z_cos = torch.cos(z_f)
-        az_sin = torch.sin(az_f)
-        az_cos = torch.cos(az_f)
-        col_sin = torch.sin(col_f)
-        col_cos = torch.cos(col_f)
+        x_sin, x_cos = torch.sin(x_f), torch.cos(x_f)
+        y_sin, y_cos = torch.sin(y_f), torch.cos(y_f)
+        z_sin, z_cos = torch.sin(z_f), torch.cos(z_f)
+        az_sin, az_cos = torch.sin(az_f), torch.cos(az_f)
+        col_sin, col_cos = torch.sin(col_f), torch.cos(col_f)
         
         if lf_format == LightFFormat.LF_X_Y_Z_A_C:
-            outputs = torch.cat((x_sin, x_cos, y_sin, y_cos, z_sin, z_cos, az_sin, az_cos, col_sin, col_cos), dim=-1)
+            outputs = torch.cat((x_sin, x_cos, y_sin, y_cos, z_sin, z_cos, 
+                                az_sin, az_cos, col_sin, col_cos), dim=-1)
         else:
-            outputs = torch.cat((x_sin, x_cos, y_sin, y_cos, z_sin, z_cos, col_sin, col_cos, az_sin, az_cos), dim=-1)
+            outputs = torch.cat((x_sin, x_cos, y_sin, y_cos, z_sin, z_cos, 
+                                col_sin, col_cos, az_sin, az_cos), dim=-1)
 
         return outputs
