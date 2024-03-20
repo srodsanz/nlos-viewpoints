@@ -48,12 +48,3 @@ class Sampling(Enum):
     """
     SAMPLING_UNIFORM = 0
     SAMPLING_HIERARCHICAL = 1
-    
-class ModelLoss(Enum):
-    """_summary_
-
-    Args:
-        Enum (_type_): _description_
-    """
-    LOSS_MSE = 0
-    LOSS_SE = 1

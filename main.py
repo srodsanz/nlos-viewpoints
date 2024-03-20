@@ -3,7 +3,7 @@ import os
 import tal 
 import numpy as np 
 import argparse
-import time
+import random
 
 from tqdm import tqdm
 from torch import optim as optimizers
@@ -14,7 +14,6 @@ from model.nerf import NLOSNeRF
 from model.loss import NeTFLoss
 from model.render import Renderer
 from model.context import NeRFContext
-from model.format import ModelLoss
 
 
 if __name__ == "__main__":
@@ -36,7 +35,7 @@ if __name__ == "__main__":
                         help="indicate if training over checkpoint model")
     parser.add_argument("--path_checkpoint", action="store",
                         help="path of serialized model for reload")
-    parser.add_argument("--loss", action="store", default=[e.name for e in ModelLoss],
+    parser.add_argument("--loss", action="store", default=[e.name for e in NeTFLoss],
                         help="loss function: MSE or SE")
     
     #Optimization tuning
@@ -48,12 +47,9 @@ if __name__ == "__main__":
                         help="Argument lower bound for range of argument sampling")
     parser.add_argument("--arg_end", type=float, action="store", default=torch.pi,
                         help="Argument upper bound for angle sampling")
-    parser.add_argument("--positional_encoding", action="store_true",
-                        help="Use positional encoding to serialize input coordinates")
     parser.add_argument("--number_gradient_updates", type=int, action="store",
                         help="Number of gradient accumulation steps")
-    parser.add_argument("--ignore_albedo", action="store_true",
-                        help="Ignore albedo estimation and replace by 1")
+    
     
     args = parser.parse_args()
     path = args.path 
@@ -64,9 +60,11 @@ if __name__ == "__main__":
     n_hemisphere_bins = args.number_hemisphere_sampling
     arg_start = args.arg_start
     arg_end = args.arg_end
+    loss_id = args.loss
     number_gradient_updates = args.number_gradient_updates
     
     device = torch.device(device_uri_gpu if torch.cuda.is_available() else "cpu")
+    loss_func = NeTFLoss.func_from_id(loss_id)
     
     assert os.path.exists(path) and os.path.isfile(path), f"Path {path} does not exist"
     
@@ -85,10 +83,9 @@ if __name__ == "__main__":
     n_epochs_default = NeRFContext.n_iter
     gt_H = NeRFContext.H
     
-    
     scene = Scene(sensor_x=sensor_width, sensor_y=sensor_height)
-    model = NLOSNeRF(positional_encoding=args.positional_encoding, ignore_albedo=args.ignore_albedo).to(device=device)
-    adam = optimizers.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
+    model = NLOSNeRF().to(device=device)
+    adam = optimizers.Adam(model.parameters(), lr=5e-3, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
     
     print(f"""
         Init training scheme with the following parameters
@@ -101,8 +98,9 @@ if __name__ == "__main__":
         gradient updates = {number_gradient_updates}
         arg start = {arg_start}
         arg end = {arg_end}
-        positional encoding = {args.positional_encoding}
-        Ignore albedo = {args.ignore_albedo}
+        loss function = {loss_func.__name__}
+        Shape ground truth H = {gt_H.shape}
+        Reloading = {args.reload_checkpoint}
     """)
     
     
@@ -114,24 +112,35 @@ if __name__ == "__main__":
         adam.load_state_dict(state_dict["optimizer_state_dict"])
         model.train()
     
+    print("Sampling full light field")
+    global_lf = scene.generate_light_field(time_start=0, time_end=t_max, arg_start=arg_start, arg_end=arg_end,
+            n_spherical_coarse_bins=n_hemisphere_bins, delta_m_meters=delta_m_meters)[..., [0, 1, 2, 4, 5]]
+    
+    x_min, x_max = torch.min(global_lf[..., 0]), torch.max(global_lf[..., 0])
+    y_min, y_max = torch.min(global_lf[..., 1]), torch.max(global_lf[..., 1])
+    z_min, z_max = torch.min(global_lf[..., 2]), torch.max(global_lf[..., 2])
+    
     with tqdm(range(n_epochs_default)) as pbar:
         
         adam.zero_grad()
         
         for i in range(n_epochs_default):
             
-            t_idx = i % t_max
+            t_idx = random.sample(range(t_max), k=1)[0]
             sampled_gt_H = gt_H[:, :, t_idx:t_idx+1]
             
-            if torch.any(sampled_gt_H > 0):
-                sampled_gt_H = (sampled_gt_H - torch.min(sampled_gt_H)) / (torch.max(sampled_gt_H) - torch.min(sampled_gt_H))
-            
-            batch_lf = scene.generate_light_field(time_start=t_idx, time_end=t_idx+1, arg_start=arg_start, arg_end=arg_end,
-                        n_spherical_coarse_bins=n_hemisphere_bins, delta_m_meters=delta_m_meters)[..., [0, 1, 2, 4, 5]]
+            batch_lf = global_lf[:, :, t_idx:t_idx+1, ...]
             
             col_bins = batch_lf[..., -1]
             
-            batch_lf_pe = model.fourier_encoding(batch_lf).to(device=device) if args.positional_encoding else batch_lf.to(device=device)
+            batch_lf_pe = model.fourier_encoding(batch_lf, 
+                                                x_min=x_min,
+                                                x_max=x_max,
+                                                y_min=y_min, 
+                                                y_max=y_max,
+                                                z_min=z_min,
+                                                z_max=z_max).to(device=device)
+            
             pred_volume_albedo = model(batch_lf_pe).cpu()
             
             pred_transient = Renderer.render_quadrature_transient(
@@ -144,10 +153,13 @@ if __name__ == "__main__":
                 col_bins=col_bins,
                 n_spherical_coarse_bins=n_hemisphere_bins
             )
-            
-            loss = NeTFLoss.squared_error(pred_transient, sampled_gt_H) / number_gradient_updates
+                        
+            loss = loss_func(transient_pred=pred_transient, transient_gt=sampled_gt_H) / number_gradient_updates
             loss.backward()
             
+            if (i+1) % number_gradient_updates == 0:
+                adam.step()
+                adam.zero_grad()
             
             if (i+1) % (t_max) == 0:
                 
@@ -157,22 +169,24 @@ if __name__ == "__main__":
                     dx = 1 / np.sqrt(2)
                     dy = 1 / np.sqrt(2)
                     dz = 1 / np.sqrt(2)
-                    xv = torch.linspace(start=center[0]+(dx/2), end=center[0]-(dx/2), steps=32)
-                    yv = torch.linspace(start=center[1]+(dy/2), end=center[1]-(dy/2), steps=32)
+                    xv = torch.linspace(start=center[0]-(dx/2), end=center[0]+(dx/2), steps=32)
+                    yv = torch.linspace(start=center[1]-(dy/2), end=center[1]+(dy/2), steps=32)
                     zv = torch.linspace(start=center[2]-(dz/2), end=center[2]+(dz/2), steps=32)
                     X, Y, Z = torch.meshgrid(xv, yv, zv, indexing="ij")
                     stack_pts = torch.stack((X, Y, Z), axis=-1)
                     view_dirs = (torch.pi/2)*torch.ones((32, 32, 32, 2))
-                    stacked_pts_dirs = model.fourier_encoding(torch.cat((stack_pts, view_dirs), dim=-1)) if args.positional_encoding else torch.cat((stack_pts, view_dirs), dim=-1)
+                    stacked_pts_dirs = model.fourier_encoding(torch.cat((stack_pts, view_dirs), dim=-1),
+                                                            x_min=x_min,
+                                                            x_max=x_max,
+                                                            y_min=y_min, 
+                                                            y_max=y_max,
+                                                            z_min=z_min,
+                                                            z_max=z_max)
                     pred = model(stacked_pts_dirs.to(device=device)).cpu()
                     pred_vol = torch.prod(pred, axis=-1).cpu().detach().numpy()
                     ax.imshow(np.max(pred_vol, axis=-1), cmap="hot")
                     fig.savefig(f"{path_intermediate_results}/result_{i+1}.png")
                     plt.close()
-            
-            if (i+1) % number_gradient_updates == 0:
-                adam.step()
-                adam.zero_grad()
             
             pbar.update(1)
             pbar.set_description(f"Loss function: {loss} at epoch: {i}")
@@ -183,6 +197,7 @@ if __name__ == "__main__":
         torch.save(
             {
                 "epoch": i,
+                "seed": torch.seed(), 
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": adam.state_dict()
             }, path_model

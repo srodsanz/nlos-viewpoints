@@ -38,7 +38,7 @@ class Scene:
         x = torch.stack((torch.linspace(start=-scale, end=scale, steps=2*nx+1)[1::2],)*ny, dim=1)
         y = torch.stack((torch.linspace(start=-scale, end=scale, steps=2*ny+1)[1::2],)*nx, dim=0)
         z = torch.zeros((nx, ny))
-        return torch.stack((x, y, z), dim=-1)
+        return torch.stack((x, y, z), dim=-1).type(torch.float32)
     
     def sample_pdf_hemispheres(self,
                     output_map,
@@ -103,7 +103,7 @@ class Scene:
                         time_start,
                         time_end,
                         n_spherical_coarse_bins,
-                        sampling_format:SphericalFormat=SphericalFormat.SF_R_A_C
+                        sampling_format:SphericalFormat
         ) -> torch.Tensor:
         """
         Sample 2D hemispheres on given radius and by spherical coordinates
@@ -131,7 +131,7 @@ class Scene:
     
     def spherical2cartesian(self, 
                             spherical_light_field, 
-                            spherical_format: SphericalFormat=SphericalFormat.SF_R_A_C
+                            spherical_format
         ) -> torch.Tensor:
         """
         Convert points in spherical coordinates to cartesian points

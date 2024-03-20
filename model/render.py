@@ -12,7 +12,6 @@ class Renderer:
         """
         Constructor
         """        
-        #TODO: Techniques for hierarchical sampling on PDF for geometry, maybe with weights over bounded volume
         self.focal = focal
     
     @classmethod
@@ -36,6 +35,7 @@ class Renderer:
             lf_form (_type_): _description_
         """
         assert col_bins.dim() == 5, f"Provided colatitude bins does not have same shape as LF tensor"
+        assert arg_start <= arg_end, f"Input arguments start = {arg_start} and end = {arg_end}"
         
         radius_bins = torch.arange(start=time_start, end=time_end) * delta_m_meters / 2
         
@@ -44,7 +44,7 @@ class Renderer:
         
         delta_az = (arg_end - arg_start) / n_spherical_coarse_bins
         delta_col = (arg_end - arg_start) / n_spherical_coarse_bins
-        scaling = delta_az * delta_col / radius_bins ** 2
+        scaling = (delta_az * delta_col) / (radius_bins ** 2)
         density = torch.sum(torch.prod(predicted_volume_albedo, axis=-1) * torch.sin(col_bins), dim=(-2, -1))
         
         return scaling * density
@@ -135,7 +135,8 @@ class Renderer:
                     samples_per_ray,
                     batch_size=32
         ):
-        """_summary_
+        """
+        Rander rays routine 
 
         Args:
             rays_o (_type_): _description_
@@ -144,7 +145,6 @@ class Renderer:
             far (_type_): _description_
             samples_per_ray (_type_): _description_
         """
-        assert not torch.is_grad_enabled(), f"Gradient watchers in torch are enabled and this performs inference"
         z = torch.linspace(start=near, end=far, steps=samples_per_ray).expand((H, W, samples_per_ray)) \
             .to(device=self.device)
         
@@ -197,7 +197,6 @@ class Renderer:
             far (_type_): _description_
             samples_per_ray (_type_): _description_
         """
-        assert not torch.is_grad_enabled(), f"Gradient watchers in torch are enabled and this performs inference"
         rays_o, rays_d = self.get_rays(H=H, W=W, camera2world=camera2world)
         rays_o, rays_d = self.ndc_rays(H=H, W=W, focal=self.focal, near=near, rays_o=rays_o, rays_d=rays_d)
         return self.render_rays(near_fn=nerf_fn,

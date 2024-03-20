@@ -9,9 +9,9 @@ class NLOSNeRF(nn.Module):
     NLOS imaging addressed by NeRF functions. Standalone architecture 
     """
         
-    def __init__(self, positional_encoding, n_input_position=3,
+    def __init__(self, positional_encoding=True, n_input_position=3,
                 n_input_views=2, n_outputs=256, n_hidden_layers=8, skips=[4],
-                length_embeddings=5, ignore_albedo=False
+                length_embeddings=5
     ):
         """
         Constructor
@@ -24,8 +24,8 @@ class NLOSNeRF(nn.Module):
         super(NLOSNeRF, self).__init__()
         
         if positional_encoding:
-            input_nn_pts = 2 * n_input_position * length_embeddings
-            input_nn_views = 2 * n_input_views * length_embeddings
+            input_nn_pts = n_input_position + 2 * n_input_position * length_embeddings
+            input_nn_views = input_nn_views + 2 * n_input_views * length_embeddings
             self.length_embeddings = length_embeddings        
         
         else:
@@ -35,7 +35,6 @@ class NLOSNeRF(nn.Module):
         self.n_input_position = input_nn_pts
         self.n_input_views = input_nn_views
         self.skips = skips
-        self.ignore_albedo = ignore_albedo
         self.n_outputs = n_outputs
         self.n_hidden_layers = n_hidden_layers
         self.hidden_components = torch.nn.ModuleList(
@@ -59,7 +58,7 @@ class NLOSNeRF(nn.Module):
 
         for i, _ in enumerate(self.hidden_components):
             h = self.hidden_components[i](h)
-            h = torch.nn.functional.relu(h)
+            h = torch.nn.functional.sigmoid(h)
             if i in self.skips:
                 h = torch.cat([input_pts, h], dim=-1)
         
@@ -74,23 +73,23 @@ class NLOSNeRF(nn.Module):
             h = torch.nn.functional.relu(h)
         
         albedo = self.albedo_output(h)
-        albedo = torch.abs(albedo) if not self.ignore_albedo else torch.ones(volume_density.shape).to(h.device)
+        albedo = torch.abs(albedo)
         
         return torch.cat((volume_density, albedo), dim=-1)
     
     def fourier_encoding(self, 
             in_: torch.Tensor,
+            x_min, x_max, y_min, y_max, z_min, z_max,
             lf_format: LightFFormat=LightFFormat.LF_X_Y_Z_A_C
     ):
         """
-        Positional encoding computation
+        Positional encoding computation from NDC coordinates
 
         Args:
             in_ (_type_): _description_
         """
         assert in_.shape[-1] == 5, f"Incorrect dimensions for input in positional encoding"
         assert hasattr(self, "length_embeddings"), f"Current object does not contain length embedding"
-
         
         length = self.length_embeddings
         fourier_basis = (2 ** torch.arange(length)) * torch.pi
@@ -101,6 +100,12 @@ class NLOSNeRF(nn.Module):
             az, col = in_[..., -2, None], in_[..., -1, None]
         else:
             az, col = in_[..., -1, None], in_[..., -2, None]
+        
+        x = 2 * ((x - x_min) / (x_max - x_min)) - 1
+        y = 2 * ((y - y_min) / (y_max - y_min)) - 1 
+        z = 2 * ((z - z_min) / (z_max - z_min)) - 1 
+        az = 2 * (az / torch.pi) - 1
+        col = 2 * (col / torch.pi) - 1
         
         x_f = x * fourier_basis
         y_f = y * fourier_basis
@@ -115,10 +120,10 @@ class NLOSNeRF(nn.Module):
         col_sin, col_cos = torch.sin(col_f), torch.cos(col_f)
         
         if lf_format == LightFFormat.LF_X_Y_Z_A_C:
-            outputs = torch.cat((x_sin, x_cos, y_sin, y_cos, z_sin, z_cos, 
-                                az_sin, az_cos, col_sin, col_cos), dim=-1)
+            outputs = torch.cat((x, x_sin, x_cos, y, y_sin, y_cos, z, z_sin, z_cos, 
+                                az, az_sin, az_cos, col, col_sin, col_cos), dim=-1)
         else:
-            outputs = torch.cat((x_sin, x_cos, y_sin, y_cos, z_sin, z_cos, 
-                                col_sin, col_cos, az_sin, az_cos), dim=-1)
+            outputs = torch.cat((x, x_sin, x_cos, y, y_sin, y_cos, z, z_sin, z_cos, 
+                                col, col_sin, col_cos, az, az_sin, az_cos), dim=-1)
 
         return outputs
