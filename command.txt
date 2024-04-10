@@ -1,1 +1,0 @@
-python main.py --path ./data/T-scene/T-scene.hdf5 --path_model ./data/models/T-single-oneshot-32.pth --device_uri_gpu cuda:1 --path_intermediate_results ./data/results --epochs 1000 --number_hemisphere_sampling 8

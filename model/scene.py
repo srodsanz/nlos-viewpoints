@@ -20,6 +20,15 @@ class Scene:
         self.sensor_y = sensor_y
         self.scale = scale
     
+    def get_sensor_width(self):
+        return self.sensor_x
+    
+    def get_sensor_height(self):
+        return self.sensor_y
+    
+    def get_sensor_scale(self):
+        return self.scale
+        
     def relay_wall(self):
         """
         Generate grid-like relay-wall for NLOS Imaging scene at plane XYO (z = 0)
@@ -38,10 +47,10 @@ class Scene:
         x = torch.stack((torch.linspace(start=-scale, end=scale, steps=2*nx+1)[1::2],)*ny, dim=1)
         y = torch.stack((torch.linspace(start=-scale, end=scale, steps=2*ny+1)[1::2],)*nx, dim=0)
         z = torch.zeros((nx, ny))
-        return torch.stack((x, y, z), dim=-1).type(torch.float32)
-    
+        return torch.stack((x, y, z), dim=-1)
+        
     def sample_pdf_hemispheres(self,
-                    output_map,
+                    pred_volume_albedo,
                     delta_m_meters,
                     time_start,
                     time_end,
@@ -63,23 +72,28 @@ class Scene:
         Returns:
             torch.Tensor: _description_
         """
-        assert output_map.dim() == 4, f"Incorrect shapes for input dimensions"
-        assert n_spherical_fine_bins <= n_spherical_coarse_bins, f"Fine sampling needs to be performed over less elements"
+        assert pred_volume_albedo.dim() == 4, f"Incorrect shapes for input dimensions"
+        assert n_spherical_fine_bins <= n_spherical_coarse_bins, f"Fine sampling needs to be performed over {n_spherical_coarse_bins} at most"
+        
+        output_map = torch.prod(pred_volume_albedo, dim=-1)
         
         radius_bins = torch.arange(start=time_start, end=time_end) * delta_m_meters / 2
         az_coarse_bins = torch.arange(start=0, end=torch.pi, steps=n_spherical_coarse_bins)
         col_coarse_bins = torch.arange(start=0, end=torch.pi, steps=n_spherical_coarse_bins)
         
         if input_format == SphericalFormat.SF_R_A_C:
-            pdf_az, pdf_col = torch.sum(output_map, axis=-1), torch.sum(output_map, axis=-2)        
+            pdf_az, pdf_col = torch.sum(output_map, dim=-2), torch.sum(output_map, dim=-1)
         else:
-            pdf_col, pdf_az = torch.sum(output_map, axis=-1), torch.sum(output_map, axis=-2)
+            pdf_az, pdf_col = torch.sum(output_map, dim=-1), torch.sum(output_map, dim=-2)
         
-        pdf_az, pdf_col = pdf_az / torch.sum(pdf_az, axis=-1)[..., None].expand(*pdf_az.shape), pdf_col / torch.sum(pdf_col, axis=-1)[..., None].expand(*pdf_col.shape)
-        assert pdf_az.shape[0] == pdf_col.shape[0] and pdf_az.shape[-1] == pdf_col.shape[-1], f"Shapes on PDFs should match"
+        pdf_az, pdf_col = pdf_az / torch.sum(pdf_az, dim=-1), torch.sum(pdf_col, dim=-1)
+        cdf_az, cdf_col = torch.cumsum(pdf_az, dim=-1), torch.cumsum(pdf_col, dim=-1)
         
-        cdf_az, cdf_col = torch.cumsum(pdf_az, axis=-1), torch.cumsum(pdf_col, axis=-1)
-        sampled_uniforms = torch.rand((radius_bins.shape[0], n_spherical_fine_bins))
+        joint_pdf = pdf_az[..., None].expand(*pdf_az.shape, pdf_col.shape[-1]) * pdf_col[..., None].expand(*pdf_col.shape, pdf_az.shape[-1])
+        
+        assert pdf_az.shape[0] == cdf_az.shape[0] and pdf_col.shape[-1] == cdf_col.shape[-1], f"Shapes on PDFs should match"
+                        
+        sampled_uniforms = torch.rand((*output_map.shape[:3], n_spherical_fine_bins, n_spherical_fine_bins))
         idxs_az = torch.searchsorted(cdf_az, sampled_uniforms)
         idxs_col = torch.searchsorted(cdf_col, sampled_uniforms)
         az_bins = az_coarse_bins[idxs_az]
@@ -93,7 +107,7 @@ class Scene:
         else:
             hemispheres = torch.stack((R, C, A), axis=-1)
         
-        return hemispheres
+        return hemispheres, joint_pdf
         
     def sample_uniform_hemispheres(
                         self,
@@ -192,6 +206,10 @@ class Scene:
         
     
     def generate_light_field(self,
+            sensor_width_idx,
+            w_offset,
+            sensor_height_idx, 
+            h_offset,
             arg_start,
             arg_end,
             time_start,
@@ -199,7 +217,7 @@ class Scene:
             n_spherical_coarse_bins, 
             delta_m_meters,
             spherical_format:SphericalFormat=SphericalFormat.SF_R_A_C,
-            output_lf_format:LightFFormat=LightFFormat.LF_X_Y_Z_A_C,
+            output_lf_format:LightFFormat=LightFFormat.LF_X_Y_Z_A_C
     ):
         """
         Generate light-field coordinates in spherical and cartesian coordinates. Both include viewing direction
@@ -210,8 +228,10 @@ class Scene:
             delta_m_meters (_type_): _description_
         """
         assert output_lf_format in [LightFFormat.LF_X_Y_Z_A_C, LightFFormat.LF_X_Y_Z_C_A], f"Incorrect light field formats for batch"
+        assert h_offset > 0 and w_offset > 0, f"Offsets width {w_offset} and height {h_offset} must be > 0"
+        assert sensor_height_idx + w_offset <= self.sensor_y and sensor_width_idx + h_offset <= self.sensor_x, f"Offsets must not exceed dimensional bounds"
         
-        relay_wall = self.relay_wall()
+        relay_wall = self.relay_wall()[sensor_width_idx: sensor_width_idx+w_offset, sensor_height_idx:sensor_height_idx+h_offset]
 
         hemispheres = self.sample_uniform_hemispheres(
                 delta_m_meters=delta_m_meters, 
@@ -240,3 +260,4 @@ class Scene:
                                                         spherical_format=spherical_format)
         
         return cartesian_light_field
+    

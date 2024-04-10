@@ -46,7 +46,7 @@ class NeTFLoss(Enum):
     def mean_squared_error(
         transient_pred: torch.Tensor,
         transient_gt: torch.Tensor
-    ):
+    ) -> torch.Tensor:
         """_summary_
 
         Args:
@@ -56,3 +56,17 @@ class NeTFLoss(Enum):
         return torch.mean(
             torch.square(transient_gt - transient_pred)
         )
+    
+    @staticmethod
+    def poisson_likelihood(
+        transient_pred: torch.Tensor
+    ):
+        """_summary_
+
+        Args:
+            transient_pred (torch.Tensor): _description_
+        """
+        return torch.mean(
+            transient_pred - transient_pred * torch.log(transient_pred)
+        )
+        

@@ -4,7 +4,7 @@
 # All commented variables show their default value
 # To render the scene with this configuration, execute:
 #   [python3 -m] tal render /media/pleiades/vault/projects/202305-cleanmirrors/data/goal1-3vs5/T-single-100k/T-single-100k.yaml
-name: lucy-single-2M
+name: lucy-scene
 
 ##
 # Mitsuba
@@ -17,10 +17,10 @@ integrator_nlos_laser_sampling: true
 integrator_nlos_hidden_geometry_sampling: true
 #integrator_nlos_hidden_geometry_sampling_do_rroulette: false
 #integrator_nlos_hidden_geometry_sampling_includes_relay_wall: true
-sample_count: 500_000
+sample_count: 2_000_000
 #account_first_and_last_bounces: false
-num_bins: 4096
-bin_width_opl: 0.003
+num_bins: 256
+bin_width_opl: 0.05
 #start_opl: 0
 #auto_detect_bins: false
 

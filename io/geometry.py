@@ -56,8 +56,11 @@ def rotation_xyo(theta, device):
                             [0, 0, 0, 1]]).to(device=device)
     return rot_mat
 
-def transform(t, theta, plane: str, 
-                device:str):
+def transform(t, 
+            theta, 
+            plane: str, 
+            device: str
+    ):
     """_summary_
 
     Args:

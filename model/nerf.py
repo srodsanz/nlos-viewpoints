@@ -9,8 +9,13 @@ class NLOSNeRF(nn.Module):
     NLOS imaging addressed by NeRF functions. Standalone architecture 
     """
         
-    def __init__(self, positional_encoding=True, n_input_position=3,
-                n_input_views=2, n_outputs=256, n_hidden_layers=8, skips=[4],
+    def __init__(self, 
+                positional_encoding=True, 
+                n_input_position=3,
+                n_input_views=2, 
+                n_outputs=256, 
+                n_hidden_layers=8, 
+                skips=[4],
                 length_embeddings=5
     ):
         """
@@ -25,7 +30,7 @@ class NLOSNeRF(nn.Module):
         
         if positional_encoding:
             input_nn_pts = n_input_position + 2 * n_input_position * length_embeddings
-            input_nn_views = input_nn_views + 2 * n_input_views * length_embeddings
+            input_nn_views = n_input_views + 2 * n_input_views * length_embeddings
             self.length_embeddings = length_embeddings        
         
         else:
@@ -58,7 +63,7 @@ class NLOSNeRF(nn.Module):
 
         for i, _ in enumerate(self.hidden_components):
             h = self.hidden_components[i](h)
-            h = torch.nn.functional.sigmoid(h)
+            h = torch.nn.functional.relu(h)
             if i in self.skips:
                 h = torch.cat([input_pts, h], dim=-1)
         
@@ -93,9 +98,9 @@ class NLOSNeRF(nn.Module):
         
         length = self.length_embeddings
         fourier_basis = (2 ** torch.arange(length)) * torch.pi
-        x = in_[..., 0, None]
-        y = in_[..., 1, None]
-        z = in_[..., 2, None]
+        
+        x, y, z = in_[..., 0, None], in_[..., 1, None], in_[..., 2, None]
+        
         if lf_format == LightFFormat.LF_X_Y_Z_A_C:
             az, col = in_[..., -2, None], in_[..., -1, None]
         else:
