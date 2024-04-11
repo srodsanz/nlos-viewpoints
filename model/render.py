@@ -40,7 +40,7 @@ class Renderer:
         radius_bins = torch.arange(start=time_start, end=time_end) * delta_m_meters / 2
         
         if time_start == 0:
-            radius_bins[0] = radius_bins[0] + 1e-5
+            radius_bins[0] = radius_bins[0] + delta_m_meters
         
         delta_az = (arg_end - arg_start) / n_spherical_coarse_bins
         delta_col = (arg_end - arg_start) / n_spherical_coarse_bins

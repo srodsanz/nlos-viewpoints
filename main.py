@@ -56,6 +56,8 @@ if __name__ == "__main__":
     #Sampling
     parser.add_argument("--light_cone_sampling", action="store_true", 
                         help="Indicate if spatial sampling is applied over the projected area")
+    parser.add_argument("--lcs_step", action="store", type=int, default=2,
+                        help="Step of lcs sampling")
     parser.add_argument("--importance_fine_sampling", action="store_true",
                         help="Indicate if using importance sampling over")
     parser.add_argument("--illumination_offset", action="store", type=int, default=1,
@@ -86,7 +88,7 @@ if __name__ == "__main__":
     loss_id = args.loss
     lr = args.lr
     number_gradient_updates = args.number_gradient_updates
-    lcs_sampling_step = 2
+    lcs_sampling_step = args.lcs_step
     length_embeddings = args.length_pe
     ill_offset = args.illumination_offset
         
