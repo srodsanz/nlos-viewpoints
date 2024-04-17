@@ -21,7 +21,7 @@ class LazyDataset(ABC):
         Args:
             path (_type_): _description_
         """
-        assert os.path.exists(path), f"Path {path} does not exist"
+        assert os.path.exists(path), f"Path {path} does not exist in Filesystem"
         raise NotImplementedError("Not implemented for generic lazy datasets")
 
 

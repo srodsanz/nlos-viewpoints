@@ -3,6 +3,7 @@ import os
 import tal 
 import numpy as np 
 import argparse
+import shutil
 import time
 
 from tqdm import tqdm
@@ -14,6 +15,7 @@ from model.nerf import NLOSNeRF
 from model.loss import NeTFLoss
 from model.render import Renderer
 from model.context import NeRFContext
+from model.format import BBox
 
 
 if __name__ == "__main__":
@@ -114,7 +116,7 @@ if __name__ == "__main__":
     
     scene = Scene(sensor_x=sensor_width, sensor_y=sensor_height)
     model = NLOSNeRF(positional_encoding=args.no_pe, length_embeddings=length_embeddings).to(device=device)
-    adam = torch.optim.Adam(model.parameters(), lr=lr)
+    adam = optimizers.Adam(model.parameters(), lr=lr)
     
     sensor_scale = scene.get_sensor_scale()
     
@@ -143,7 +145,7 @@ if __name__ == "__main__":
         Reloading = {args.reload_checkpoint}
         Ignore checkpoint = {args.ignore_checkpoint}
         Light cone sampling = {args.light_cone_sampling}
-        Light come sampling step = {lcs_sampling_step}
+        Light cone sampling step = {lcs_sampling_step}
         gradient updates = {number_gradient_updates}
     """)
     
@@ -163,6 +165,9 @@ if __name__ == "__main__":
     z_min, z_max = 0, r_max
     sensor_resolution = sensor_width * sensor_height
     
+    #Initialize batch of permutations
+    resolution_perm = torch.randperm(sensor_resolution)
+    
     with tqdm(range(n_epochs_default)) as pbar:
         
         adam.zero_grad()
@@ -173,12 +178,22 @@ if __name__ == "__main__":
             t0 = time.time()
             
             if args.light_cone_sampling and i % lcs_sampling_step == 0:
-                width_idx, height_idx = NeRFContext.sample_mkw_light_cone()
+                lc_bbox = NeRFContext.estimate_mkw_geometry_bbox()
+                
+                
+                
+                lc_bbox = NeRFContext.estimate_mkw_geometry_bbox().to_dict()
+                width_idx = lc_bbox["x0"]
+                height_idx = lc_bbox["y0"]
+                width_max = lc_bbox["x1"]
+                height_max = lc_bbox["y1"]
+                
             
             else:
-                sensor_idx = i % sensor_resolution
-                width_idx = sensor_idx // sensor_width
-                height_idx = sensor_idx % sensor_height
+                sensing_idx = i % sensor_resolution
+                joint_idx = resolution_perm[sensing_idx]
+                width_idx = joint_idx // sensor_width
+                height_idx = joint_idx % sensor_height
             
             batch_lf = scene.generate_light_field(sensor_width_idx=width_idx,
                         sensor_height_idx=height_idx,
@@ -229,11 +244,11 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     fig, ax = plt.subplots()
                     center = np.array([0, 0, 0.5])
-                    dx = 1 / np.sqrt(2)
-                    dy = 1 / np.sqrt(2)
+                    dx = 1 
+                    dy = 1
                     dz = 1 / np.sqrt(2)
-                    xv = torch.linspace(start=center[0]-(dx/2), end=center[0]+(dx/2), steps=sensor_width)
-                    yv = torch.linspace(start=center[1]-(dy/2), end=center[1]+(dy/2), steps=sensor_width)
+                    xv = torch.linspace(start=center[0]-(dx), end=center[0]+(dx), steps=sensor_width)
+                    yv = torch.linspace(start=center[1]-(dy), end=center[1]+(dy), steps=sensor_width)
                     zv = torch.linspace(start=center[2]-(dz/2), end=center[2]+(dz/2), steps=sensor_width)
                     X, Y, Z = torch.meshgrid(xv, yv, zv,  indexing="ij")
                     stack_pts = torch.stack((Y, X, Z), axis=-1)
@@ -250,6 +265,10 @@ if __name__ == "__main__":
                     ax.imshow(np.max(pred_vol, axis=-1), cmap="hot")
                     fig.savefig(f"{path_intermediate_results}/result_{i+1}.png")
                     plt.close()
+                
+            if (i+1) % sensor_resolution == 0:
+                resolution_perm = torch.randperm(sensor_resolution)
+                
             
             cum_time_epoch += time.time() - t0
             

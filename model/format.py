@@ -60,7 +60,6 @@ class BBox:
         self._y0 = y0
         self._w_offset = w_offset
         self._h_offset = h_offset
-        self.saved = True
     
     def get_width(self):
         return self._w_offset
@@ -77,13 +76,4 @@ class BBox:
             "x1": self._x0 + self._w_offset,
             "y1": self._y0 + self._h_offset
         }
-    
-    def get_vertex(self):
-        """_summary_
-        """
-        return {
-            "x0": self._x0,
-            "y0": self._y0
-        }
-    
     

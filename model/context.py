@@ -1,5 +1,7 @@
 
 import torch
+import cv2
+import numpy as np
 
 from tal.io.capture_data import NLOSCaptureData
 from tal.enums import HFormat
@@ -29,6 +31,7 @@ class NeRFContext:
         Args:
             data (NLOSCaptureData): _description_
         """
+        
         cls.H = torch.from_numpy(data.H)
         cls.sampled_hemispheres = n_sampled_hemispheres
         cls.delta_m_meters = data.delta_t
@@ -45,27 +48,51 @@ class NeRFContext:
         cls.n_iter = n_iter
     
     @classmethod
-    def sample_mkw_light_cone(cls):
+    def estimate_mkw_geometry_bbox(cls,
+                                n_clusters=2,
+                                max_iter=1000, eps=1e-5):
         """
-        Sample Minkowski Light Cone after illumination events
+        Apply unsupervised clustering algorithm to estimate the projection of hidden geometry in the relay wall
+        This operator acts as an unsupervised binarization in floating point data, avoiding direct thresholding
+        
+        @pre --- NeRF context must be initialized
         """
         assert cls.H is not None, f"Impulse response function is not initialized"
-        assert cls.sensor_height is not None and cls.sensor_width is not None
+        assert cls.sensor_height is not None and cls.sensor_width is not None, f"Transient measurement not initialized"
         
-        projection_lc = torch.sum(cls.H, dim=-1)
-        pdf_illuminated_points = projection_lc / torch.sum(projection_lc)
-        pdf_illuminated_points = pdf_illuminated_points.reshape(-1)
-        cdf_illuminated_points = torch.cumsum(pdf_illuminated_points, dim=0)
-        idxs_samples = torch.searchsorted(cdf_illuminated_points, torch.rand(1)).item()
+        projection_lc_mkw = torch.sum(cls.H, dim=-1).numpy()
+        criteria = (cv2.TermCriteria_EPS + cv2.TERM_CRITERIA_MAX_ITER, max_iter, eps)
         
-        #TODO: fix this workaround 
+        _, labels, centers = cv2.kmeans(projection_lc_mkw, 
+                                        K=n_clusters,
+                                        bestLabels=None, 
+                                        criteria=criteria,
+                                        attempts=max_iter,
+                                        centers=cv2.KMEANS_RANDOM_CENTERS)
         
-        width_idx, height_idx = idxs_samples // cls.sensor_width, idxs_samples % cls.sensor_height
+        centers = np.uint8(centers)
+        clusters = centers[labels.flatten()]
+                
+        centers = np.uint8(centers)
+        clusters = centers[labels.flatten()]
+        bbox_idxs_x, bbox_idxs_y = np.where(clusters == 1)
+        width_min = np.min(bbox_idxs_x)
+        height_min = np.min(bbox_idxs_y)
+        w_offset = np.max(bbox_idxs_x) - width_min
+        h_offset = np.max(bbox_idxs_y) - height_min
         
-        return width_idx, height_idx
+
+        return BBox(x0=width_min, 
+                    y0=height_min,
+                    w_offset=w_offset,
+                    h_offset=h_offset
+        )
     
     @classmethod
     def clear(cls):
+        """
+        Clear context --- set to None in order to GC
+        """
         cls.n_sampled_hemispheres = None
         cls.t_max = None 
         cls.n_iter = None 
