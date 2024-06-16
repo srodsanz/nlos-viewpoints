@@ -50,30 +50,3 @@ class Sampling(Enum):
     SAMPLING_HIERARCHICAL = 1
 
 
-class BBox:
-    
-    def __init__(self, x0, y0, w_offset, h_offset):
-        """
-        Constructor
-        """
-        self._x0 = x0
-        self._y0 = y0
-        self._w_offset = w_offset
-        self._h_offset = h_offset
-    
-    def get_width(self):
-        return self._w_offset
-    
-    def get_height(self):
-        return self._h_offset
-    
-    def to_dict(self):
-        """_summary_
-        """
-        return {
-            "x0": self._x0,
-            "y0": self._y0,
-            "x1": self._x0 + self._w_offset,
-            "y1": self._y0 + self._h_offset
-        }
-    
