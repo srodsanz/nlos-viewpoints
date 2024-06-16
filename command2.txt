@@ -1,0 +1,1 @@
+python main.py --path ./data/T-scene/T-scene.hdf5 --path_model ./data/models/Z-single-oneshot-32-b32.pth --device_uri_gpu cuda:0 --path_intermediate_results ./data/results/pos_enc_se_T --epochs 1200 --number_hemisphere_sampling 16 --checkpoint  --loss LOSS_MSE --number_gradient_updates 16
