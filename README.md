@@ -1,10 +1,30 @@
 # A *Neural* Reconstruction Method for Non-Line-of-Sight Imaging
 
-<div class="image-container" style="display: block; margin:auto;">
-    <img src=".img/nlosletters_64_nerf.png" alt="drawing" width="150"/>
-    <img src=".img/su_64_nerf.png" alt="drawing" width="150"/>
-    <img src=".img/usaf_64_nerf.png" alt="drawing" width="150"/>
-</div>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        .image-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: auto;
+        }
+        .image-container img {
+            margin: 0 20px;
+            width: 150px;
+        }
+    </style>
+</head>
+<body>
+    <div class="image-container">
+        <img src=".img/nlosletters_64_nerf.png" alt="drawing"/>
+        <img src=".img/su_64_nerf.png" alt="drawing"/>
+        <img src=".img/usaf_64_nerf.png" alt="drawing"/>
+    </div>
+</body>
+</html>
 
 
 This project `nlos-viewpoints` is a Python implementation of the neural model presented at the paper "Non-line-of-Sight Imaging via Neural Transient Fields," by S. Shen et. al,  in IEEE Transactions on Pattern Analysis and Machine Intelligence. 
@@ -123,4 +143,4 @@ transientfields. IEEE Transactions on Pattern Analysis & Machine Intelligence,43
 11583, May 2017.
 
 
-Also, the author acknowledges previous work that has facilitated this implementation, concretely the authors of the[mitsuba3-transient-nlos](https://github.com/diegoroyo/mitsuba3-transient-nlos) repository and its wrappers and utilities library [y-tal](https://github.com/diegoroyo/tal/).
+Also, the author acknowledges previous work that has facilitated this implementation, concretely the authors of the [mitsuba3-transient-nlos](https://github.com/diegoroyo/mitsuba3-transient-nlos) repository and its wrappers and utilities library [y-tal](https://github.com/diegoroyo/tal/).
