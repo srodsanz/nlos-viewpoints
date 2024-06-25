@@ -4,8 +4,6 @@ import torch
 from tal.io.capture_data import NLOSCaptureData
 from tal.enums import HFormat
 
-
-
 class NeRFContext:
     
     n_sampled_hemispheres = None
@@ -48,8 +46,10 @@ class NeRFContext:
     @classmethod
     def clear(cls):
         """
-        Clear context --- set to None in order to GC
+        Clear context --- set to None so as to reset
         """
+        assert cls.read, f"Context must be read so as to clear"
+        
         cls.n_sampled_hemispheres = None
         cls.t_max = None 
         cls.n_iter = None 

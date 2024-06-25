@@ -97,7 +97,8 @@ class NLOSNeRF(nn.Module):
         assert hasattr(self, "length_embeddings"), f"Current object does not contain length embedding"
         
         length = self.length_embeddings
-        fourier_basis = (2 ** torch.arange(length)) * torch.pi
+        
+        basis = (2 ** torch.arange(length)) * torch.pi
         
         x, y, z = in_[..., 0, None], in_[..., 1, None], in_[..., 2, None]
         
@@ -112,11 +113,11 @@ class NLOSNeRF(nn.Module):
         az = 2 * (az / torch.pi) - 1
         col = 2 * (col / torch.pi) - 1
         
-        x_f = x * fourier_basis
-        y_f = y * fourier_basis
-        z_f = z * fourier_basis
-        az_f = az * fourier_basis
-        col_f = col * fourier_basis
+        x_f = x * basis
+        y_f = y * basis
+        z_f = z * basis
+        az_f = az * basis
+        col_f = col * basis
         
         x_sin, x_cos = torch.sin(x_f), torch.cos(x_f)
         y_sin, y_cos = torch.sin(y_f), torch.cos(y_f)

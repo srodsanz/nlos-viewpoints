@@ -1,0 +1,7 @@
+drjit>=0.4.4
+h5py>=3.10.0
+mitransient>=1.0.3
+mitsuba>=3.5.0
+numpy>=1.24.4
+torch>=2.0.1
+tqdm>=4.66.2
