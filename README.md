@@ -1,6 +1,6 @@
 # A *Neural* Reconstruction Method for Non-Line-of-Sight Imaging
 
-<div class="image-container" style="display: block; text-align:center;">
+<div class="image-container" style="display: block; margin:auto;">
     <img src=".img/nlosletters_64_nerf.png" alt="drawing" width="150"/>
     <img src=".img/su_64_nerf.png" alt="drawing" width="150"/>
     <img src=".img/usaf_64_nerf.png" alt="drawing" width="150"/>
