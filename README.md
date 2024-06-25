@@ -1,11 +1,11 @@
 # A *Neural* Reconstruction Method for Non-Line-of-Sight Imaging
 
 
-  <div align="center">
-      <img src=".img/nlosletters_64_nerf.png" alt="drawing" width=150 height=150/>
-      <img src=".img/su_64_nerf.png" alt="drawing" width=150 height=150/>
-      <img src=".img/usaf_64_nerf.png" alt="drawing" witdth=150 height=150/>
-  </div>
+<div align="center">
+    <img src=".img/nlosletters_64_nerf.png" alt="drawing" width=150 height=150/>
+    <img src=".img/su_64_nerf.png" alt="drawing" width=150 height=150/>
+    <img src=".img/usaf_64_nerf.png" alt="drawing" witdth=150 height=150/>
+</div>
 
 
 This project `nlos-viewpoints` is a Python implementation of the neural model presented at the paper "Non-line-of-Sight Imaging via Neural Transient Fields," by S. Shen et. al,  in IEEE Transactions on Pattern Analysis and Machine Intelligence. 
