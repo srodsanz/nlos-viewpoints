@@ -8,12 +8,11 @@ import time
 
 from tqdm import tqdm
 from torch import optim as optimizers
-from matplotlib import pyplot as plt
 
 from model.scene import Scene
 from model.nerf import NLOSNeRF
 from model.loss import NeTFLoss
-from model.render import Renderer
+from model.transient import Transient
 from model.context import NeRFContext
 
 
@@ -52,11 +51,9 @@ if __name__ == "__main__":
     parser.add_argument("--number_gradient_updates", type=int, action="store",
                         help="Number of gradient accumulation steps")
     parser.add_argument("--lr", action="store", type=float, default=5e-3,
-                        help="Learning rate")
+                        help="Learning rate parameter associated to training")
     
     #Sampling
-    parser.add_argument("--importance_fine_sampling", action="store_true",
-                        help="Indicate if using importance sampling over")
     parser.add_argument("--illumination_offset", action="store", type=int, default=1,
                         help="Offset on illumination points sampling")
     parser.add_argument("--importance_sampling", action="store_true", 
@@ -66,7 +63,7 @@ if __name__ == "__main__":
     parser.add_argument("--length_pe", action="store", type=int, default=5,
                         help="Length of positional encoding of frequencies")
     parser.add_argument("--no_pe", action="store_false",
-                        help="No positional encoding")
+                        help="Flag to disable positional encoding")
     
     #Reproducibility
     parser.add_argument("--seed", action="store", type=int, default=0,
@@ -175,7 +172,6 @@ if __name__ == "__main__":
             
             adam.zero_grad()
             cum_time_epoch = 0
-            losses = []
             
             for i in range(n_epochs_default):
                 
@@ -212,7 +208,7 @@ if __name__ == "__main__":
                 
                 pred_volume_albedo = model(batch_lf_pe).cpu()
                 
-                pred_transient = Renderer.render_quadrature_transient(
+                pred_transient = Transient.render_quadrature_transient(
                     predicted_volume_albedo=pred_volume_albedo,
                     delta_m_meters=delta_m_meters,
                     time_start=0,
@@ -226,41 +222,10 @@ if __name__ == "__main__":
                 loss = loss_func(transient_pred=pred_transient, transient_gt=sampled_gt_H) / number_gradient_updates
                 loss.backward()
 
-                with torch.no_grad():
-                    losses.append(loss.item())
                 
                 if (i+1) % number_gradient_updates == 0:
                     adam.step()
                     adam.zero_grad()
-                
-                if (i+1) % (t_max) == 0:
-                    
-                    with torch.no_grad():
-                        fig, ax = plt.subplots()
-                        center = np.array([0, 0, 0.5])
-                        dx = 1 
-                        dy = 1
-                        dz = 1 / np.sqrt(2)
-                        xv = torch.linspace(start=center[0]-(dx), end=center[0]+(dx), steps=sensor_width)
-                        yv = torch.linspace(start=center[1]-(dy), end=center[1]+(dy), steps=sensor_width)
-                        zv = torch.linspace(start=center[2]-(dz/2), end=center[2]+(dz/2), steps=sensor_width)
-                        X, Y, Z = torch.meshgrid(xv, yv, zv,  indexing="ij")
-                        stack_pts = torch.stack((X, Y, Z), axis=-1)
-                        view_dirs = (torch.pi/2)*torch.ones((sensor_width, sensor_width, sensor_width, 2))
-                        stacked_pts_dirs = model.fourier_encoding(torch.cat((stack_pts, view_dirs), dim=-1),
-                                                                x_min=x_min,
-                                                                x_max=x_max,
-                                                                y_min=y_min, 
-                                                                y_max=y_max,
-                                                                z_min=z_min,
-                                                                z_max=z_max) if args.no_pe else torch.cat((stack_pts, view_dirs), dim=-1)
-                        pred = model(stacked_pts_dirs.to(device=device)).cpu()
-                        pred_vol = torch.prod(pred, axis=-1).cpu().detach().numpy()
-                        ax.imshow(np.max(pred_vol, axis=-1), cmap="hot")
-                        plt.axis('off')
-                        fig.savefig(f"{path_intermediate_results}/result_{i+1}.png")
-                        plt.close()
-                    
                 
                 
                 if (i+1) % sensor_resolution == 0:
@@ -273,15 +238,6 @@ if __name__ == "__main__":
                 pbar.update(1)
                 
             
-            print("Plotting loss values")
-            
-            fig, ax = plt.subplots()
-            ax.plot(range(n_epochs_default), losses)
-            fig.suptitle("Loss function values per iteration")
-            ax.set_xlabel("Epoch number")
-            ax.set_ylabel("Loss value")
-            fig.savefig(f"{path_intermediate_results}/loss.png")
-
 
         
         if not args.ignore_checkpoint:
@@ -304,9 +260,19 @@ if __name__ == "__main__":
                 }, path_model
             )
     
-    except KeyboardInterrupt:
-        print("Interrumpted by keyboard shortcut")
-        answer_delete = input("Delete results subdirectory? (y / n): ")
+    except KeyboardInterrupt:        
+        print("Interrumpted training by keyboard shortcut")
         
+        answer_delete = input("Delete results subdirectory? (y / n): ")
         if answer_delete.lower() == "y":
-            shutil.rmtree(path_intermediate_results)
+            for filename in os.listdir(path_intermediate_results):
+                file_path = os.path.join(path_intermediate_results, filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    print('Failed to delete %s. Reason: %s' % (file_path, e))
+        
+        

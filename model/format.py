@@ -42,11 +42,6 @@ class LightFCoordinates(Enum):
     LFC_SPHERICAL = 0
     LFC_CARTESIAN = 1
     
-class Sampling(Enum):
-    """
-    Sampling strategies
-    """
-    SAMPLING_UNIFORM = 0
-    SAMPLING_HIERARCHICAL = 1
+
 
 
