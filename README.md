@@ -7,7 +7,6 @@
     <img src=".img/usaf_64_nerf.png" alt="drawing" witdth=150 height=150/>
 </div>
 
-
 This project `nlos-viewpoints` is a Python implementation of the neural model presented at the paper "Non-line-of-Sight Imaging via Neural Transient Fields," by S. Shen et. al,  in IEEE Transactions on Pattern Analysis and Machine Intelligence. 
 
 It explores its reconstruction capabilities with additional imaging features, so as to be compared with other time-of-flight methods in Non-Line-of-Sight Imaging related to this previous work. These are at the moment depth imaging and novel view synthesis.
@@ -15,9 +14,7 @@ It explores its reconstruction capabilities with additional imaging features, so
 The implementation relies on PyTorch with single-GPU training. Past training has been a NVIDIA GeForce RTX 2080 Ti, with a memory allocation of around 8 GB of VRAM in single-precision.
 
 
-**Author**: Salvador Rodríguez-Sanz
-
-**Supervisors**: Diego Gutiérrez & Albert Redó-Sánchez
+**Author**: Salvador Rodríguez-Sanz 
 
 
 ## First steps
