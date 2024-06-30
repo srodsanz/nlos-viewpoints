@@ -11,7 +11,7 @@ This project `nlos-viewpoints` is a Python implementation of the neural model pr
 
 It explores its reconstruction capabilities with additional imaging features, so as to be compared with other time-of-flight methods in Non-Line-of-Sight Imaging related to this previous work. These are at the moment depth imaging and novel view synthesis.
 
-The implementation relies on PyTorch with single-GPU training. Past training has been a NVIDIA GeForce RTX 2080 Ti, with a memory allocation of around 8 GB of VRAM in single-precision.
+The implementation relies on PyTorch with single-GPU training. Past training has been allocated in a NVIDIA GeForce RTX 2080 Ti, with a memory allocation of around 8 GB of VRAM in single-precision.
 
 
 **Author**: Salvador Rodríguez-Sanz 
